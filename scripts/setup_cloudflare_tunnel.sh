@@ -15,7 +15,7 @@
 #   F. Lock down UFW — close 80/443, keep only 22 (SSH)
 set -euo pipefail
 
-DOMAIN="maestro.dockplusai.io"
+DOMAIN="maestro.thiagodocarmo.com"
 TUNNEL_NAME="maestro"
 APP_PORT="8000"
 

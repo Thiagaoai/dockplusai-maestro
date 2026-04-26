@@ -33,7 +33,7 @@ if [ ! -f /opt/maestro/.env ]; then
 # Copie o conteúdo do .env local e mude:
 APP_ENV=production
 DRY_RUN=false
-WEBHOOK_BASE_URL=https://maestro.dockplusai.io
+WEBHOOK_BASE_URL=https://maestro.thiagodocarmo.com
 REDIS_URL=redis://redis:6379/0
 STORAGE_BACKEND=supabase
 EOF
