@@ -15,6 +15,7 @@ from maestro.graph import clear_checkpointer
 from maestro.main import create_app
 from maestro.repositories import store
 from maestro.utils.security import compute_hmac_sha256
+from maestro.webhooks.telegram import _clear_pending_command
 
 
 @pytest.fixture(autouse=True)
@@ -32,10 +33,12 @@ def reset_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
     store.reset()
     clear_checkpointer()
+    _clear_pending_command(123)
     yield
     get_settings.cache_clear()
     store.reset()
     clear_checkpointer()
+    _clear_pending_command(123)
 
 
 @pytest.fixture

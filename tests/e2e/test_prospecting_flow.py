@@ -2,6 +2,7 @@ from maestro.repositories import store
 from maestro.schemas.events import LeadRecord
 from maestro.services.prospecting import prospect_queue_item
 from maestro.services.tavily import WebProspect
+from maestro.webhooks.telegram import _clear_pending_command, _get_pending_command, _message_text
 
 
 def telegram_message(client, text: str, update_id: int = 300):
@@ -96,7 +97,7 @@ def test_prospecting_batch_approval_executes_dry_run(client):
 
 
 def test_prospect_web_hoa_searches_tavily_and_creates_real_send_approval(client, monkeypatch):
-    async def fake_search(self, target, locations, max_results_per_location=5):
+    async def fake_search(self, target, locations, max_results_per_location=5, max_prospects=None):
         return [
             WebProspect(
                 name="Harbor HOA",
@@ -135,7 +136,7 @@ def test_prospect_web_hoa_searches_tavily_and_creates_real_send_approval(client,
 
 
 def test_prospect_web_then_target_continues_pending_flow(client, monkeypatch):
-    async def fake_search(self, target, locations, max_results_per_location=5):
+    async def fake_search(self, target, locations, max_results_per_location=5, max_prospects=None):
         return [
             WebProspect(
                 name="Island Condo Association",
@@ -157,7 +158,7 @@ def test_prospect_web_then_target_continues_pending_flow(client, monkeypatch):
     first = telegram_message(client, "prospect web", 306)
     assert first.status_code == 200
     assert first.json()["status"] == "needs_target"
-    assert store.telegram_pending_commands[123]["command"] == "prospect_web"
+    assert _get_pending_command(123)["command"] == "prospect_web"
 
     second = telegram_message(client, "hoa", 307)
 
@@ -165,6 +166,91 @@ def test_prospect_web_then_target_continues_pending_flow(client, monkeypatch):
     data = second.json()
     assert data["status"] == "approval_requested"
     assert data["target"] == "hoa"
-    assert 123 not in store.telegram_pending_commands
+    assert _get_pending_command(123) == {}
     approval = store.approvals[data["approval_id"]]
     assert approval.preview["prospects"][0]["property_name"] == "Island Condo Association"
+
+
+def test_prospect_web_pending_flow_does_not_depend_on_store_attribute(client, monkeypatch):
+    async def fake_search(self, target, locations, max_results_per_location=5, max_prospects=None):
+        return [
+            WebProspect(
+                name="Cape HOA",
+                email="board@capehoa.org",
+                source_url="https://capehoa.example/contact",
+                source_title="Cape HOA Contact",
+                verification_note="Official contact page lists this email.",
+                location=locations[0],
+                target=target,
+                raw={"title": "Cape HOA Contact", "url": "https://capehoa.example/contact"},
+            )
+        ]
+
+    monkeypatch.setattr(
+        "maestro.services.tavily.TavilyProspectFinder.search_prospects",
+        fake_search,
+    )
+    monkeypatch.delattr(store, "telegram_pending_commands", raising=False)
+
+    first = telegram_message(client, "prospect web", 310)
+    assert first.status_code == 200
+    assert first.json()["status"] == "needs_target"
+    assert _get_pending_command(123)["command"] == "prospect_web"
+
+    second = telegram_message(client, "hoa", 311)
+
+    assert second.status_code == 200
+    data = second.json()
+    assert data["status"] == "approval_requested"
+    assert data["agent"] == "prospecting"
+    assert data["business"] == "roberts"
+    assert data["mode"] == "web"
+    assert data["source"] == "tavily"
+    assert data["target"] == "hoa"
+    assert _get_pending_command(123) == {}
+
+
+def test_prospect_web_limits_queued_batch_to_configured_size(client, monkeypatch):
+    async def fake_search(self, target, locations, max_results_per_location=5, max_prospects=None):
+        return [
+            WebProspect(
+                name=f"HOA {idx}",
+                email=f"board{idx}@hoa.example",
+                source_url=f"https://hoa{idx}.example/contact",
+                source_title=f"HOA {idx} Contact",
+                verification_note="Official contact page lists this email.",
+                location=locations[0],
+                target=target,
+                raw={"title": f"HOA {idx} Contact", "url": f"https://hoa{idx}.example/contact"},
+            )
+            for idx in range(15)
+        ]
+
+    monkeypatch.setattr(
+        "maestro.services.tavily.TavilyProspectFinder.search_prospects",
+        fake_search,
+    )
+
+    response = telegram_message(client, "prospect web hoa", 312)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "approval_requested"
+    assert data["batch_size"] == 10
+    assert len(store.prospect_queue) == 10
+
+
+def test_prospect_web_command_accepts_uppercase_and_slash(client):
+    _clear_pending_command(123)
+    uppercase = telegram_message(client, "Prospect web", 308)
+    assert uppercase.status_code == 200
+    assert uppercase.json()["status"] == "needs_target"
+
+    _clear_pending_command(123)
+    slash = telegram_message(client, "/prospect web", 309)
+    assert slash.status_code == 200
+    assert slash.json()["status"] == "needs_target"
+
+
+def test_telegram_message_text_reads_caption():
+    assert _message_text({"caption": "Prospect web"}) == "Prospect web"

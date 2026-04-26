@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     apollo_api_key: str = ""
     hunter_api_key: str = ""
     tavily_api_key: str = ""
+    google_maps_api_key: str = ""
+    apify_token: str = ""
+    perplexity_api_key: str = ""
 
     daily_cost_alert_usd: float = 15.0
     daily_cost_kill_usd: float = 30.0

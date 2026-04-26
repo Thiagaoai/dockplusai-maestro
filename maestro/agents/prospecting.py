@@ -6,8 +6,29 @@ from maestro.config import Settings
 from maestro.profiles import load_profile
 from maestro.schemas.events import AgentRunRecord, ApprovalRequest, LeadRecord
 from maestro.services.prospecting import interleave_prospect_sources, prospect_queue_item
-from maestro.services.tavily import TavilyError, TavilyProspectFinder, WebProspect
+from maestro.services.tavily import TavilyProspectFinder, WebProspect
 from maestro.tools._enrichment.apollo import search_people
+
+KNOWN_SOURCES = {"tavily", "google", "hunter", "apollo", "apify", "perplexity"}
+
+
+def _get_finder(source: str, settings):
+    if source == "google":
+        from maestro.services.google_places import GooglePlacesProspectFinder
+        return GooglePlacesProspectFinder(settings)
+    if source == "hunter":
+        from maestro.services.hunter import HunterProspectFinder
+        return HunterProspectFinder(settings)
+    if source == "apollo":
+        from maestro.services.apollo_web import ApolloWebProspectFinder
+        return ApolloWebProspectFinder(settings)
+    if source == "apify":
+        from maestro.services.apify_maps import ApifyProspectFinder
+        return ApifyProspectFinder(settings)
+    if source == "perplexity":
+        from maestro.services.perplexity import PerplexityProspectFinder
+        return PerplexityProspectFinder(settings)
+    return None  # caller uses self.web_finder (Tavily default)
 
 DOCKPLUS_ICP_TITLES = [
     "CEO",
@@ -289,31 +310,53 @@ class ProspectingAgent:
         self,
         target: str,
         batch_size: int | None = None,
+        source: str = "tavily",
     ) -> tuple[ApprovalRequest | None, AgentRunRecord]:
         business = "roberts"
         size = batch_size or self.settings.prospecting_batch_size_roberts
         locations = self._web_locations()
+        finder = _get_finder(source, self.settings) or self.web_finder
+        max_results_per_location = max(1, min(3, size))
         try:
-            found = await self.web_finder.search_prospects(target, locations)
-        except TavilyError as exc:
+            if isinstance(finder, TavilyProspectFinder):
+                found = await finder.search_prospects(
+                    target,
+                    locations,
+                    max_results_per_location=max_results_per_location,
+                    max_prospects=size,
+                )
+            else:
+                found = await finder.search_prospects(
+                    target,
+                    locations,
+                    max_results_per_location=max_results_per_location,
+                )
+        except Exception as exc:
             run = AgentRunRecord(
                 business=business,
                 agent_name="prospecting",
-                input=f"web_search target={target}",
-                output=f'{{"status":"error","error":"{str(exc)}"}}',
+                input=f"web_search source={source} target={target}",
+                output=f'{{"status":"error","source":"{source}","error":"{str(exc)[:200]}"}}',
                 profit_signal="pipeline",
                 prompt_version=self.settings.prompt_version,
                 dry_run=self.settings.dry_run,
             )
             return None, run
 
-        queued_refs = await self._queue_web_prospects(business, target, found)
+        found = found[:size]
+        queued_refs = await self._queue_web_prospects(
+            business,
+            target,
+            found,
+            source=source,
+            max_items=size,
+        )
         if not queued_refs:
             run = AgentRunRecord(
                 business=business,
                 agent_name="prospecting",
-                input=f"web_search target={target}",
-                output=f'{{"status":"empty","target":"{target}","locations":{locations!r}}}',
+                input=f"web_search source={source} target={target}",
+                output=f'{{"status":"empty","source":"{source}","target":"{target}","locations":{locations!r}}}',
                 profit_signal="pipeline",
                 prompt_version=self.settings.prompt_version,
                 dry_run=self.settings.dry_run,
@@ -330,8 +373,8 @@ class ProspectingAgent:
             run = AgentRunRecord(
                 business=business,
                 agent_name="prospecting",
-                input=f"web_search target={target}",
-                output=f'{{"status":"empty","target":"{target}","locations":{locations!r}}}',
+                input=f"web_search source={source} target={target}",
+                output=f'{{"status":"empty","source":"{source}","target":"{target}","locations":{locations!r}}}',
                 profit_signal="pipeline",
                 prompt_version=self.settings.prompt_version,
                 dry_run=self.settings.dry_run,
@@ -344,6 +387,7 @@ class ProspectingAgent:
             mode="web",
             target=target,
             locations=locations,
+            source=source,
         )
 
     async def _select_batch(self, business: str, size: int, mode: str) -> list[dict[str, Any]]:
@@ -378,6 +422,7 @@ class ProspectingAgent:
         mode: str,
         target: str | None = None,
         locations: list[str] | None = None,
+        source: str = "tavily",
     ) -> tuple[ApprovalRequest, AgentRunRecord]:
         profile = load_profile(business)
         subject = self._subject(target)
@@ -389,7 +434,7 @@ class ProspectingAgent:
         cc = [self.settings.resend_reply_to_roberts] if self.settings.resend_reply_to_roberts else []
         preview = {
             "campaign": {
-                "name": self._campaign_name(target),
+                "name": self._campaign_name(target, source),
                 "mode": mode,
                 "flow": "roberts web" if mode == "web" else "roberts 10",
                 "target": target,
@@ -451,17 +496,22 @@ class ProspectingAgent:
         business: str,
         target: str,
         prospects: list[WebProspect],
+        source: str = "tavily",
+        max_items: int | None = None,
     ) -> list[str]:
+        source_name = f"{source}_web_search"
         queued_refs: list[str] = []
         for prospect in prospects:
-            event_id = f"tavily:{business}:{target}:{prospect.email.casefold()}"
+            if max_items is not None and len(queued_refs) >= max_items:
+                break
+            event_id = f"{source}:{business}:{target}:{prospect.email.casefold()}"
             lead = LeadRecord(
                 id=uuid5(NAMESPACE_URL, event_id),
                 event_id=event_id,
                 business=business,
                 name=prospect.name,
                 email=prospect.email,
-                source="tavily_web_search",
+                source=source_name,
                 message=prospect.verification_note,
                 status="prospect_imported",
                 raw={
@@ -470,14 +520,15 @@ class ProspectingAgent:
                     "source_url": prospect.source_url,
                     "source_title": prospect.source_title,
                     "verification": prospect.verification_note,
-                    "tavily_result": prospect.raw,
+                    "prospect_source": source,
+                    "raw_result": prospect.raw,
                 },
             )
             await self.store.upsert_lead(lead)
             item = prospect_queue_item(
                 business=business,
                 lead=lead,
-                source_name="tavily_web_search",
+                source_name=source_name,
                 source_ref=event_id,
                 source_type="scrape",
             )
@@ -505,9 +556,10 @@ class ProspectingAgent:
             return "Cape Cod landscape help for HOA and condo communities"
         return "10% off a new landscape project on Cape Cod"
 
-    def _campaign_name(self, target: str | None = None) -> str:
+    def _campaign_name(self, target: str | None = None, source: str = "tavily") -> str:
+        src_tag = f"[{source.upper()}]" if source != "tavily" else ""
         if target:
-            return f"Roberts Web Prospecting - {target.strip().upper()}"
+            return f"Roberts Web Prospecting - {target.strip().upper()} {src_tag}".strip()
         return "Roberts 10% New Customer Landscape Promo"
 
     def _text_body(self, business_name: str, target: str | None = None) -> str:

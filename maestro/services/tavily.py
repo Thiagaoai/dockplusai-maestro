@@ -52,6 +52,7 @@ class TavilyProspectFinder:
         target: str,
         locations: list[str],
         max_results_per_location: int = 5,
+        max_prospects: int | None = None,
     ) -> list[WebProspect]:
         if not self.settings.tavily_api_key:
             raise TavilyError("TAVILY_API_KEY not set")
@@ -98,6 +99,8 @@ class TavilyProspectFinder:
                             continue
                         seen_emails.add(email_key)
                         prospects.append(prospect)
+                        if max_prospects is not None and len(prospects) >= max_prospects:
+                            return prospects
         return prospects
 
     def _query(self, target: str, location: str) -> str:

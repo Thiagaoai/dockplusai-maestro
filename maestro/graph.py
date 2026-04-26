@@ -24,6 +24,7 @@ from maestro.graph_nodes import (
 from maestro.graph_state import MaestroState
 from maestro.repositories.store import InMemoryStore
 from maestro.schemas.events import LeadIn
+from maestro.utils.telegram_commands import parse_prospect_web_command
 
 log = structlog.get_logger()
 
@@ -168,6 +169,20 @@ class MaestroGraph:
 
     async def handle_text_message(self, text: str, last_business: str = "roberts") -> dict[str, Any]:
         """Entry point for Telegram messages (non-command)."""
+        command = parse_prospect_web_command(text)
+        if command is not None:
+            return {
+                "status": "needs_target" if not command["target"] else "command_not_handled",
+                "agent": "prospecting",
+                "business": last_business,
+                "route": "prospect_web_command_guard",
+                "message": "Qual target voce quer prospectar? Exemplo: prospect web hoa",
+                "target": command["target"],
+                "telegram": {
+                    "dry_run": True,
+                    "payload": {"text": "Qual target voce quer prospectar? Exemplo: prospect web hoa"},
+                },
+            }
         event_id = f"telegram:{hash(text)}"
         thread_id = f"telegram:{event_id}"
         initial_state: MaestroState = {
