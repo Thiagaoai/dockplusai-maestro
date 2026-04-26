@@ -14,6 +14,16 @@ class HunterError(RuntimeError):
 
 MIN_CONFIDENCE = 70
 
+_AGGREGATOR_DOMAINS = {
+    "marinas.com", "snagaslip.com", "usharbors.com", "boattrader.com",
+    "activecaptain.com", "dockwa.com", "yachtworld.com", "boats.com",
+    "yelp.com", "yellowpages.com", "tripadvisor.com", "google.com",
+    "facebook.com", "instagram.com", "linkedin.com", "twitter.com",
+    "bing.com", "mapquest.com", "foursquare.com", "angi.com",
+    "thumbtack.com", "homeadvisor.com", "capecodchamber.org",
+    "findmarina.com", "marinemax.com", "boatdealers.com",
+}
+
 
 class HunterProspectFinder:
     """Discovers domains via Tavily, then enriches with Hunter.io domain-search."""
@@ -96,7 +106,7 @@ class HunterProspectFinder:
                     for result in r.json().get("results", []):
                         url = str(result.get("url") or "")
                         domain = urlparse(url).netloc.replace("www.", "")
-                        if not domain or domain in seen:
+                        if not domain or domain in seen or domain in _AGGREGATOR_DOMAINS:
                             continue
                         seen.add(domain)
                         infos.append(

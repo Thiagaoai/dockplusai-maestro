@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from maestro.config import Settings
 from maestro.services.tavily import BAD_EMAIL_PREFIXES, EMAIL_RE, USER_AGENT, WebProspect
 
-APOLLO_SEARCH_URL = "https://api.apollo.io/v1/mixed_companies/search"
+APOLLO_SEARCH_URL = "https://api.apollo.io/v1/organizations/search"
 
 
 class ApolloWebError(RuntimeError):
@@ -37,7 +37,7 @@ class ApolloWebProspectFinder:
 
         org_locations = [f"{loc}, Massachusetts, United States" for loc in locations]
         payload = {
-            "q_keywords": " ".join(self._keywords(target)),
+            "q_organization_name": " ".join(self._keywords(target)),
             "organization_locations": org_locations,
             "per_page": max_results_per_location * len(locations),
             "page": 1,
@@ -56,8 +56,6 @@ class ApolloWebProspectFinder:
                     "Content-Type": "application/json",
                 },
             )
-            if r.status_code == 422:
-                raise ApolloWebError("Apollo organization search requires paid plan (422)")
             if r.status_code >= 400:
                 raise ApolloWebError(
                     f"Apollo search failed: {r.status_code}: {r.text[:200]}"
