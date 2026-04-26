@@ -13,6 +13,7 @@ class FakeQuery:
         self.table_name = table_name
         self._operation = "select"
         self._payload = None
+        self._on_conflict = None
         self._filters = []
         self._limit = None
         self._order = None
@@ -27,9 +28,10 @@ class FakeQuery:
         self._payload = payload
         return self
 
-    def upsert(self, payload, **_kwargs):
+    def upsert(self, payload, **kwargs):
         self._operation = "upsert"
         self._payload = payload
+        self._on_conflict = kwargs.get("on_conflict")
         return self
 
     def update(self, payload):
@@ -57,9 +59,11 @@ class FakeQuery:
             return SimpleNamespace(data=[self._payload])
         if self._operation == "upsert":
             payload = dict(self._payload)
-            key = "id" if "id" in payload else "event_id"
+            keys = [key.strip() for key in self._on_conflict.split(",")] if self._on_conflict else []
+            if not keys:
+                keys = ["id" if "id" in payload else "event_id"]
             for idx, row in enumerate(rows):
-                if row.get(key) == payload.get(key):
+                if all(row.get(key) == payload.get(key) for key in keys):
                     rows[idx] = payload
                     break
             else:
@@ -158,3 +162,23 @@ async def test_supabase_store_approval_and_audit(supabase_store):
     )
     assert audit.hash
     assert supabase_store.client.tables["audit_log"][0]["hash"] == audit.hash
+
+
+@pytest.mark.asyncio
+async def test_supabase_store_upserts_clients_web_verified(supabase_store):
+    item = {
+        "business": "roberts",
+        "property_name": "Race Point Townhouse Condominiums",
+        "email": "racepointcondos@example.com",
+        "source_name": "provincetown_hoa_verified_web",
+        "campaign": "roberts web",
+        "email_id": "email_1",
+        "payload": {"source": "verified"},
+    }
+
+    await supabase_store.upsert_clients_web_verified(item)
+    await supabase_store.upsert_clients_web_verified({**item, "email_id": "email_2"})
+
+    rows = supabase_store.client.tables["clients_web_verified"]
+    assert len(rows) == 1
+    assert rows[0]["email_id"] == "email_2"

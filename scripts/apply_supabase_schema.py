@@ -13,9 +13,11 @@ import os
 from pathlib import Path
 
 import psycopg
+from dotenv import load_dotenv
 
 
 def main() -> None:
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     database_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
     if not database_url:
         raise SystemExit("Missing SUPABASE_DB_URL or DATABASE_URL")

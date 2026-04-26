@@ -54,7 +54,7 @@ class DryRunActionExecutor:
                 return await self.execute_sdr_approval(approval)
             return await self.execute_real_sdr_approval(approval)
         if approval.action == "prospecting_batch_send_html":
-            if self.settings.dry_run:
+            if self.settings.dry_run and not approval.preview.get("force_real_send"):
                 return await self.execute_prospecting_batch_dry_run(approval)
             return await self.execute_prospecting_batch(approval)
         result = {
@@ -103,7 +103,13 @@ class DryRunActionExecutor:
         email = approval.preview.get("email", {})
         sent: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+        table_errors: list[dict[str, Any]] = []
         sent_refs: list[str] = []
+        failed_refs: list[str] = []
+        attempted_count = len(approval.preview.get("prospects", []))
+        campaign = approval.preview.get("campaign", {})
+        cc = email.get("cc") or []
 
         for prospect in approval.preview.get("prospects", []):
             source_ref = prospect.get("source_ref")
@@ -121,22 +127,71 @@ class DryRunActionExecutor:
                 skipped.append({"source_ref": source_ref, "reason": "missing_email"})
                 continue
 
-            result = await self.email.send_business_email(
-                business=approval.business,
-                to=lead.email,
-                subject=email.get("subject", "Roberts Landscape offer"),
-                body=email.get("text", ""),
-                html=email.get("html"),
-                idempotency_key=f"prospecting:{approval.id}:{source_ref}",
-            )
-            sent.append({"source_ref": source_ref, "email_id": result.get("email_id")})
-            sent_refs.append(source_ref)
+            try:
+                result = await self.email.send_business_email(
+                    business=approval.business,
+                    to=lead.email,
+                    cc=cc,
+                    subject=email.get("subject", "Roberts Landscape offer"),
+                    body=email.get("text", ""),
+                    html=email.get("html"),
+                    idempotency_key=f"prospecting:{approval.id}:{source_ref}",
+                )
+            except ResendError as exc:
+                failed.append({"source_ref": source_ref, "email": lead.email, "reason": str(exc)[:300]})
+                if source_ref:
+                    failed_refs.append(source_ref)
+                continue
+
+            sent_item = {
+                "source_ref": source_ref,
+                "email": lead.email,
+                "email_id": result.get("email_id"),
+                "property_name": prospect.get("property_name") or lead.name,
+            }
+            sent.append(sent_item)
+            if source_ref:
+                sent_refs.append(source_ref)
+            if prospect.get("source_type") == "scrape" and hasattr(self.store, "upsert_clients_web_verified"):
+                raw = lead.raw or {}
+                try:
+                    await self.store.upsert_clients_web_verified(
+                        {
+                            "business": approval.business,
+                            "lead_id": str(lead.id),
+                            "property_name": prospect.get("property_name") or lead.name or "Unknown",
+                            "email": lead.email,
+                            "source_name": prospect.get("source_name") or lead.source or "scrape",
+                            "source_ref": source_ref,
+                            "source_url": prospect.get("source_url") or raw.get("source_url"),
+                            "verification_note": prospect.get("verification_note") or raw.get("verification"),
+                            "campaign": campaign.get("flow") or campaign.get("name") or "web_verified",
+                            "approval_id": approval.id,
+                            "email_id": result.get("email_id"),
+                            "send_status": "sent",
+                            "payload": {
+                                "prospect": prospect,
+                                "lead_raw": raw,
+                            },
+                        }
+                    )
+                except Exception as exc:
+                    table_errors.append(
+                        {
+                            "source_ref": source_ref,
+                            "email": lead.email,
+                            "table": "clients_web_verified",
+                            "error": str(exc)[:300],
+                        }
+                    )
 
         if sent_refs and hasattr(self.store, "update_prospect_queue_status"):
             await self.store.update_prospect_queue_status(approval.business, sent_refs, "sent")
         skipped_refs = [item["source_ref"] for item in skipped if item.get("source_ref")]
         if skipped_refs and hasattr(self.store, "update_prospect_queue_status"):
             await self.store.update_prospect_queue_status(approval.business, skipped_refs, "skipped")
+        if failed_refs and hasattr(self.store, "update_prospect_queue_status"):
+            await self.store.update_prospect_queue_status(approval.business, failed_refs, "failed")
 
         result = {
             "action": approval.action,
@@ -144,10 +199,15 @@ class DryRunActionExecutor:
             "business": approval.business,
             "dry_run": False,
             "status": "executed",
+            "attempted_count": attempted_count,
             "sent_count": len(sent),
             "skipped_count": len(skipped),
+            "failed_count": len(failed),
+            "table_error_count": len(table_errors),
             "sent": sent,
             "skipped": skipped,
+            "failed": failed,
+            "table_errors": table_errors,
         }
         await self.store.add_audit_log(
             event_type="tool_call",

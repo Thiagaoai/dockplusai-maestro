@@ -14,13 +14,14 @@ class TelegramService:
 
     async def send_approval_card(self, approval_id: str, preview: dict[str, Any]) -> dict[str, Any]:
         text = self._format_approval_text(preview)
+        approve_label = "Approve real send" if not preview.get("dry_run", True) else "Approve dry-run"
         payload = {
             "chat_id": self.settings.telegram_thiago_chat_id,
             "text": text,
             "reply_markup": {
                 "inline_keyboard": [
                     [
-                        {"text": "Approve dry-run", "callback_data": f"approval:approve:{approval_id}"},
+                        {"text": approve_label, "callback_data": f"approval:approve:{approval_id}"},
                         {"text": "Reject", "callback_data": f"approval:reject:{approval_id}"},
                     ]
                 ]
@@ -55,18 +56,32 @@ class TelegramService:
             for prospect in prospects:
                 source = prospect.get("source_type", "unknown")
                 source_counts[source] = source_counts.get(source, 0) + 1
-            sample_names = [p.get("name") or "Unknown" for p in prospects[:5]]
-            return (
-                "Prospecting batch approval\n\n"
-                f"Campaign: {campaign.get('name')}\n"
-                f"Offer: {campaign.get('offer')}\n"
-                f"Batch size: {campaign.get('batch_size')}\n"
-                f"Sources: {source_counts}\n"
-                f"Subject: {email.get('subject')}\n"
-                f"CTA: {campaign.get('cta_url')}\n"
-                f"Sample: {', '.join(sample_names)}\n\n"
-                f"Dry run: {preview.get('dry_run', True)}"
+            property_names = [p.get("property_name") or p.get("name") or "Unknown" for p in prospects[:10]]
+            property_lines = "\n".join(f"- {name}" for name in property_names)
+            location_text = ", ".join(campaign.get("locations") or [])
+            target_text = campaign.get("target")
+            lines = [
+                "Prospecting batch approval",
+                "",
+                f"Campaign: {campaign.get('name')}",
+            ]
+            if target_text:
+                lines.append(f"Target: {target_text}")
+            if location_text:
+                lines.append(f"Locations: {location_text}")
+            lines.extend(
+                [
+                    f"Offer: {campaign.get('offer')}",
+                    f"Batch size: {campaign.get('batch_size')}",
+                    f"Sources: {source_counts}",
+                    f"Subject: {email.get('subject')}",
+                    f"CTA: {campaign.get('cta_url')}",
+                    f"Properties:\n{property_lines}",
+                    "",
+                    f"Dry run: {preview.get('dry_run', True)}",
+                ]
             )
+            return "\n".join(lines)
         if "lead" not in preview:
             title = preview.get("topic") or preview.get("task") or preview.get("request") or "Action"
             signal = preview.get("profit_signal", "growth")

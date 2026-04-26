@@ -17,6 +17,7 @@ from maestro.graph_nodes import (
     finalize_node,
     hitl_node,
     phase1_agent_node,
+    prospecting_node,
     sdr_node,
     triage_node,
 )
@@ -62,6 +63,8 @@ def _route_after_triage(state: MaestroState) -> str:
     target = state.get("target_agent")
     if target == "sdr":
         return "sdr"
+    if target == "prospecting":
+        return "prospecting"
     return "phase1_agent"
 
 
@@ -97,6 +100,7 @@ class MaestroGraph:
         # Nodes
         builder.add_node("triage", triage_node)
         builder.add_node("sdr", sdr_node)
+        builder.add_node("prospecting", prospecting_node)
         builder.add_node("phase1_agent", phase1_agent_node)
         builder.add_node("hitl", hitl_node)
         builder.add_node("execute", execute_node)
@@ -106,6 +110,7 @@ class MaestroGraph:
         builder.add_edge(START, "triage")
         builder.add_conditional_edges("triage", _route_after_triage)
         builder.add_edge("sdr", "hitl")
+        builder.add_edge("prospecting", "hitl")
         builder.add_conditional_edges(
             "phase1_agent",
             lambda state: "hitl" if state.get("approval") else "finalize",

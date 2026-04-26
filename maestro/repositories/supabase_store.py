@@ -152,6 +152,14 @@ class SupabaseStore:
             updated += len(getattr(response, "data", None) or [])
         return updated
 
+    async def upsert_clients_web_verified(self, item: dict[str, Any]) -> dict[str, Any]:
+        payload = {**item, "updated_at": datetime.now(UTC).isoformat()}
+        self.client.table("clients_web_verified").upsert(
+            payload,
+            on_conflict="business,email,campaign",
+        ).execute()
+        return payload
+
     async def add_audit_log(
         self,
         event_type: str,

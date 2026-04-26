@@ -24,9 +24,11 @@ class InMemoryStore:
         self.approvals: dict[str, ApprovalRequest] = {}
         self.business_metrics: list[dict[str, Any]] = []
         self.prospect_queue: list[dict[str, Any]] = []
+        self.clients_web_verified: list[dict[str, Any]] = []
         self.paused: bool = False
         self.dry_run_actions: list[dict[str, Any]] = []
         self.approval_threads: dict[str, str] = {}  # approval_id -> thread_id
+        self.telegram_pending_commands: dict[int, dict[str, Any]] = {}
 
     def reset(self) -> None:
         self.__init__()
@@ -111,6 +113,18 @@ class InMemoryStore:
                 item["status"] = status
                 updated += 1
         return updated
+
+    async def upsert_clients_web_verified(self, item: dict[str, Any]) -> dict[str, Any]:
+        for idx, existing in enumerate(self.clients_web_verified):
+            if (
+                existing.get("business") == item.get("business")
+                and existing.get("email") == item.get("email")
+                and existing.get("campaign") == item.get("campaign")
+            ):
+                self.clients_web_verified[idx] = {**existing, **item}
+                return self.clients_web_verified[idx]
+        self.clients_web_verified.append(item)
+        return item
 
     async def add_audit_log(
         self,

@@ -27,6 +27,7 @@ class ResendEmailClient:
         subject: str,
         body: str,
         html: str | None = None,
+        cc: list[str] | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         if not self.settings.resend_api_key:
@@ -40,6 +41,8 @@ class ResendEmailClient:
         }
         if html:
             payload["html"] = html
+        if cc:
+            payload["cc"] = cc
         reply_to = self.settings.resend_reply_to_for_business(business)
         if reply_to:
             payload["reply_to"] = reply_to
@@ -62,5 +65,6 @@ class ResendEmailClient:
             "status": "sent",
             "email_id": result.get("id"),
             "to": to,
+            "cc": cc or [],
             "subject": subject,
         }

@@ -14,6 +14,7 @@ from maestro.agents.cfo import CFOAgent
 from maestro.agents.cmo import CMOAgent
 from maestro.agents.marketing import MarketingAgent
 from maestro.agents.operations import OperationsAgent
+from maestro.agents.prospecting import ProspectingAgent
 from maestro.agents.sdr import SDRAgent
 from maestro.agents.triage import triage_message
 from maestro.config import Settings
@@ -36,6 +37,19 @@ async def triage_node(state: dict[str, Any]) -> dict[str, Any]:
     """Classify input and decide which agent should handle it."""
     input_data = state.get("input_data", {})
     input_type = state.get("input_type", "")
+
+    # If target_agent is already set (e.g. cron jobs or direct invocation), respect it
+    forced_target = state.get("target_agent")
+    if forced_target:
+        return {
+            "triage_result": {
+                "business": state.get("business", "roberts"),
+                "target_agent": forced_target,
+                "confidence": 1.0,
+                "intent": "forced_route",
+            },
+            "target_agent": forced_target,
+        }
 
     # GHL leads skip triage and go straight to SDR
     if input_type == "ghl_lead":
@@ -113,6 +127,38 @@ async def sdr_node(state: dict[str, Any]) -> dict[str, Any]:
             "meeting_slots": approval.preview.get("meeting_slots"),
         },
         "approval": approval.model_dump(mode="json"),
+    }
+
+
+async def prospecting_node(state: dict[str, Any]) -> dict[str, Any]:
+    """Run the ProspectingAgent to prepare a batch of outreach emails."""
+    business = state.get("business", "roberts")
+    input_data = state.get("input_data", {})
+    mode = input_data.get("mode", "owned")
+    batch_size = input_data.get("batch_size")
+
+    settings = _settings()
+    agent = ProspectingAgent(settings, store)
+    approval, run = await agent.prepare_roberts_batch(
+        batch_size=batch_size, mode=mode
+    )
+
+    if approval:
+        await store.create_approval(approval)
+        await store.add_agent_run(run)
+        return {
+            "agent_name": "prospecting",
+            "agent_message": f"Prospecting batch ready: {approval.preview.get('campaign', {}).get('batch_size', 0)} contacts.",
+            "profit_signal": "pipeline",
+            "approval": approval.model_dump(mode="json"),
+        }
+
+    await store.add_agent_run(run)
+    return {
+        "agent_name": "prospecting",
+        "agent_message": "No prospects in queue.",
+        "profit_signal": "pipeline",
+        "approval": None,
     }
 
 

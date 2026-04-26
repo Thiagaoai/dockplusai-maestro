@@ -47,6 +47,7 @@ class Settings(BaseSettings):
 
     apollo_api_key: str = ""
     hunter_api_key: str = ""
+    tavily_api_key: str = ""
 
     daily_cost_alert_usd: float = 15.0
     daily_cost_kill_usd: float = 30.0
@@ -58,6 +59,7 @@ class Settings(BaseSettings):
     prospecting_schedule_hours_roberts: str = "8,11,15,17"
     prospecting_customer_per_scrape_cycle: int = 2
     prospecting_scrape_per_cycle: int = 1
+    prospecting_web_locations_roberts: str = "Cape Cod, South Shore, Martha's Vineyard, Nantucket"
     roberts_promo_discount_percent: int = 10
     roberts_website_url: str = "https://robertslandscapecod.com"
 
