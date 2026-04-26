@@ -3,6 +3,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
+
 from maestro.config import Settings
 from maestro.schemas.events import (
     AgentRunRecord,
@@ -12,6 +14,8 @@ from maestro.schemas.events import (
     LeadRecord,
     ProcessedEvent,
 )
+
+log = structlog.get_logger()
 
 
 class SupabaseStore:
@@ -160,6 +164,24 @@ class SupabaseStore:
         ).execute()
         return payload
 
+    async def record_dry_run_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        payload = {
+            "approval_id": action.get("approval_id"),
+            "business": action.get("business"),
+            "action": action.get("action", "unknown"),
+            "payload": action,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        try:
+            self.client.table("dry_run_actions").insert(payload).execute()
+        except Exception as exc:
+            log.warning(
+                "supabase_dry_run_actions_persist_failed",
+                error=str(exc)[:300],
+                action=payload["action"],
+            )
+        return action
+
     async def add_audit_log(
         self,
         event_type: str,
@@ -227,15 +249,40 @@ class SupabaseStore:
         return approval
 
     async def map_approval_to_thread(self, approval_id: str, thread_id: str) -> None:
-        await self.add_audit_log(
-            event_type="system",
-            action="approval_thread_mapped",
-            payload={"approval_id": approval_id, "thread_id": thread_id},
-            agent="graph",
-        )
+        try:
+            self.client.table("approval_threads").upsert(
+                {
+                    "approval_id": approval_id,
+                    "thread_id": thread_id,
+                    "updated_at": datetime.now(UTC).isoformat(),
+                },
+                on_conflict="approval_id",
+            ).execute()
+        except Exception as exc:
+            log.warning(
+                "supabase_approval_thread_map_failed",
+                error=str(exc)[:300],
+                approval_id=approval_id,
+            )
 
     async def get_thread_for_approval(self, approval_id: str) -> str | None:
-        return None
+        try:
+            response = (
+                self.client.table("approval_threads")
+                .select("thread_id")
+                .eq("approval_id", approval_id)
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(response, "data", None) or []
+            return rows[0].get("thread_id") if rows else None
+        except Exception as exc:
+            log.warning(
+                "supabase_approval_thread_lookup_failed",
+                error=str(exc)[:300],
+                approval_id=approval_id,
+            )
+            return None
 
     async def _latest_audit_hash(self) -> str | None:
         response = (

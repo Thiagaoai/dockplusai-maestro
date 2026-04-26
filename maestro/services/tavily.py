@@ -104,11 +104,10 @@ class TavilyProspectFinder:
         return prospects
 
     def _query(self, target: str, location: str) -> str:
-        normalized = target.strip().casefold()
-        if normalized in {"hoa", "hoas", "homeowners association"}:
-            target_terms = '"HOA" OR "homeowners association" OR "condominium association"'
-        else:
-            target_terms = target.strip()
+        from maestro.utils.verticals import expand_target
+
+        terms = expand_target(target)
+        target_terms = " OR ".join(f'"{t}"' for t in terms[:3])
         return f"{target_terms} contact email {location} MA official website"
 
     def _prospects_from_result(

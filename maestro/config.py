@@ -39,8 +39,12 @@ class Settings(BaseSettings):
     composio_enabled: bool = True
     ghl_location_id_roberts: str = ""
     ghl_location_id_dockplusai: str = ""
+    postforme_api_key: str = ""
+    postforme_account_roberts_instagram: str = ""
+    postforme_account_dockplusai_instagram: str = ""
 
     anthropic_api_key: str = ""
+    anthropic_triage_model: str = "claude-haiku-4-5-20251001"
     openai_api_key: str = ""
     langchain_api_key: str = ""
     langchain_project: str = "maestro-dev"
@@ -51,6 +55,18 @@ class Settings(BaseSettings):
     google_maps_api_key: str = ""
     apify_token: str = ""
     perplexity_api_key: str = ""
+    meta_access_token: str = ""
+    meta_ad_account_roberts: str = ""
+    meta_ad_account_dockplusai: str = ""
+    google_ads_developer_token: str = ""
+    google_ads_customer_id_roberts: str = ""
+    google_ads_customer_id_dockplusai: str = ""
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_refresh_token: str = ""
+    stripe_secret_key_roberts: str = ""
+    stripe_secret_key_dockplusai: str = ""
+    gbp_api_key: str = ""
 
     daily_cost_alert_usd: float = 15.0
     daily_cost_kill_usd: float = 30.0
@@ -89,6 +105,36 @@ class Settings(BaseSettings):
             return self.ghl_token_roberts
         if business == "dockplusai":
             return self.ghl_token_dockplusai
+        return ""
+
+    def postforme_account_for_business(self, business: str, platform: str = "instagram") -> str:
+        if platform != "instagram":
+            return ""
+        if business == "roberts":
+            return self.postforme_account_roberts_instagram
+        if business == "dockplusai":
+            return self.postforme_account_dockplusai_instagram
+        return ""
+
+    def meta_ad_account_for_business(self, business: str) -> str:
+        if business == "roberts":
+            return self.meta_ad_account_roberts
+        if business == "dockplusai":
+            return self.meta_ad_account_dockplusai
+        return ""
+
+    def google_ads_customer_id_for_business(self, business: str) -> str:
+        if business == "roberts":
+            return self.google_ads_customer_id_roberts
+        if business == "dockplusai":
+            return self.google_ads_customer_id_dockplusai
+        return ""
+
+    def stripe_secret_key_for_business(self, business: str) -> str:
+        if business == "roberts":
+            return self.stripe_secret_key_roberts
+        if business == "dockplusai":
+            return self.stripe_secret_key_dockplusai
         return ""
 
     def resend_from_for_business(self, business: str) -> str:

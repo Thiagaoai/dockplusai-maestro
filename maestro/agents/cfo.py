@@ -1,6 +1,7 @@
 from maestro.config import Settings
 from maestro.profiles._schema import BusinessProfile
 from maestro.schemas.events import AgentResult, AgentRunRecord, ApprovalRequest
+from maestro.services.stripe import StripeClient, StripeError
 from maestro.subagents.cfo import (
     analyze_margin,
     forecast_cashflow,
@@ -16,6 +17,16 @@ class CFOAgent:
 
     async def run(self, question: str = "weekly financial briefing") -> tuple[AgentResult, AgentRunRecord]:
         reconciliation = reconcile_invoices(self.profile.business_id)
+        stripe_summary = await self._stripe_summary()
+        if stripe_summary["status"] == "ok":
+            reconciliation = {
+                **reconciliation,
+                "stripe_charges_checked": stripe_summary["charges_checked"],
+                "stripe_succeeded_count": stripe_summary["succeeded_count"],
+                "stripe_gross_revenue_usd": stripe_summary["gross_revenue_usd"],
+                "stripe_refunded_usd": stripe_summary["refunded_usd"],
+                "sources": stripe_summary["sources"],
+            }
         margin = analyze_margin(self.profile)
         cashflow = forecast_cashflow(margin["estimated_revenue_usd"])
 
@@ -72,3 +83,9 @@ class CFOAgent:
             dry_run=self.settings.dry_run,
         )
         return result, run
+
+    async def _stripe_summary(self) -> dict:
+        try:
+            return await StripeClient(self.settings).recent_charges_summary(self.profile.business_id)
+        except StripeError as exc:
+            return {"status": "error", "error": str(exc)[:300], "sources": ["stripe:error"]}

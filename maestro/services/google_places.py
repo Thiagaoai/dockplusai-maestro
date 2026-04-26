@@ -61,10 +61,10 @@ class GooglePlacesProspectFinder:
         return prospects
 
     def _query(self, target: str, location: str) -> str:
-        normalized = target.strip().casefold()
-        if normalized in {"hoa", "hoas", "homeowners association"}:
-            return f"HOA homeowners association property management {location} MA"
-        return f"{target} {location} MA"
+        from maestro.utils.verticals import expand_target
+
+        terms = expand_target(target)
+        return f"{terms[0]} {location} MA"
 
     async def _prospects_from_place(
         self,

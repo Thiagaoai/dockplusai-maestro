@@ -17,6 +17,24 @@ class FakeEmail:
 
 
 @pytest.mark.asyncio
+async def test_dry_run_executor_records_action_through_store():
+    approval = ApprovalRequest(
+        business="roberts",
+        event_id="approval:dry",
+        action="marketing_publish_or_schedule_post",
+        preview={"topic": "spring cleanup"},
+    )
+
+    result = await DryRunActionExecutor(
+        store,
+        settings=Settings(dry_run=True),
+    ).execute_approval(approval)
+
+    assert result["dry_run"] is True
+    assert store.dry_run_actions[0]["approval_id"] == approval.id
+
+
+@pytest.mark.asyncio
 async def test_real_web_prospecting_records_verified_sent_and_failed_counts():
     sent_lead = LeadRecord(
         event_id="scrape:ok",

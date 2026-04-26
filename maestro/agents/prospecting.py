@@ -551,9 +551,40 @@ class ProspectingAgent:
             if location.strip()
         ]
 
+    _HOA_TARGETS = frozenset({
+        "hoa", "hoas", "homeowners association", "condo", "condominium",
+        "property manager", "property management",
+    })
+    _INSTITUTIONAL_TARGETS = frozenset({
+        "school", "day care", "daycare", "preschool", "hospital", "hospice",
+        "senior living", "assisted living", "nursing home", "church",
+    })
+    _HOSPITALITY_TARGETS = frozenset({
+        "hotel", "motel", "resort", "inn", "bed and breakfast", "marina",
+        "restaurant", "brewery", "winery", "campground", "country club",
+        "golf", "event venue", "wedding venue", "spa", "gym", "yacht club",
+    })
+
+    def _vertical_category(self, target: str | None) -> str:
+        if not target:
+            return "generic"
+        normalized = target.strip().casefold()
+        if normalized in self._HOA_TARGETS:
+            return "hoa"
+        if normalized in self._INSTITUTIONAL_TARGETS:
+            return "institutional"
+        if normalized in self._HOSPITALITY_TARGETS:
+            return "hospitality"
+        return "generic"
+
     def _subject(self, target: str | None = None) -> str:
-        if target and target.strip().casefold() in {"hoa", "hoas", "homeowners association"}:
+        category = self._vertical_category(target)
+        if category == "hoa":
             return "Cape Cod landscape help for HOA and condo communities"
+        if category == "institutional":
+            return "Grounds and landscape help for Cape Cod organizations"
+        if category == "hospitality":
+            return "Outdoor upgrades for your Cape Cod property"
         return "10% off a new landscape project on Cape Cod"
 
     def _campaign_name(self, target: str | None = None, source: str = "tavily") -> str:
@@ -565,7 +596,9 @@ class ProspectingAgent:
     def _text_body(self, business_name: str, target: str | None = None) -> str:
         discount = self.settings.roberts_promo_discount_percent
         url = self.settings.roberts_website_url
-        if target and target.strip().casefold() in {"hoa", "hoas", "homeowners association"}:
+        category = self._vertical_category(target)
+
+        if category == "hoa":
             return (
                 "Hi there,\n\n"
                 f"This is {business_name}. We help Cape Cod, South Shore, Martha's Vineyard, "
@@ -579,6 +612,33 @@ class ProspectingAgent:
                 "Best,\nRoberts Landscape\n\n"
                 "If this is not relevant, reply STOP and we will not follow up."
             )
+
+        if category == "institutional":
+            return (
+                "Hi there,\n\n"
+                f"This is {business_name}. We work with schools, community organizations, "
+                "and public properties across Cape Cod on practical grounds and landscape work: "
+                "walkways, drainage, common areas, plantings, and hardscape that holds up "
+                "in coastal weather.\n\n"
+                f"For new clients, we are offering {discount}% off a new approved project.\n\n"
+                "If you handle exterior maintenance or grounds improvements, I would be glad "
+                f"to take a look and give you a straight next step: {url}\n\n"
+                "Best,\nRoberts Landscape\n\n"
+                "If this is not relevant, reply STOP and we will not follow up."
+            )
+
+        if category == "hospitality":
+            return (
+                "Hi there,\n\n"
+                f"This is {business_name}. We help Cape Cod hotels, restaurants, and hospitality "
+                "properties with outdoor upgrades that make a difference for guests: patios, "
+                "entrance walkways, plantings, drainage, and stonework.\n\n"
+                f"For new clients, we are offering {discount}% off a new approved project.\n\n"
+                f"See our work and reach out here: {url}\n\n"
+                "Best,\nRoberts Landscape\n\n"
+                "If this is not relevant, reply STOP and we will not follow up."
+            )
+
         return (
             "Hi there,\n\n"
             f"This is {business_name}. If you are planning a new landscape, patio, walkway, "
@@ -594,7 +654,10 @@ class ProspectingAgent:
     def _html_body(self, business_name: str, target: str | None = None) -> str:
         discount = self.settings.roberts_promo_discount_percent
         url = escape(self.settings.roberts_website_url)
-        if target and target.strip().casefold() in {"hoa", "hoas", "homeowners association"}:
+        safe_name = escape(business_name)
+        category = self._vertical_category(target)
+
+        if category == "hoa":
             return f"""<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f7f7f4;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
@@ -604,7 +667,7 @@ class ProspectingAgent:
           <tr><td style="padding:28px 30px 12px;">
             <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">HOA & Condo Landscape Help</div>
             <h1 style="font-size:27px;line-height:1.2;margin:10px 0;color:#172033;">A practical landscape team for coastal communities</h1>
-            <p style="font-size:16px;line-height:1.55;color:#334155;margin:0;">{escape(business_name)} helps with patios, walkways, drainage, planting, stonework, and outdoor living upgrades.</p>
+            <p style="font-size:16px;line-height:1.55;color:#334155;margin:0;">{safe_name} helps with patios, walkways, drainage, planting, stonework, and outdoor living upgrades.</p>
           </td></tr>
           <tr><td style="padding:8px 30px 4px;">
             <p style="font-size:16px;line-height:1.6;margin:0 0 14px;">Hi there,</p>
@@ -622,6 +685,65 @@ class ProspectingAgent:
     </table>
   </body>
 </html>"""
+
+        if category == "institutional":
+            return f"""<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f4f6f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f7;padding:24px 0;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#fff;border:1px solid #d5dde3;">
+          <tr><td style="padding:28px 30px 12px;">
+            <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Cape Cod Grounds & Landscape</div>
+            <h1 style="font-size:27px;line-height:1.2;margin:10px 0;color:#172033;">Practical grounds work for Cape Cod organizations</h1>
+            <p style="font-size:16px;line-height:1.55;color:#334155;margin:0;">{safe_name} works with schools, community organizations, and public properties on walkways, drainage, plantings, and hardscape.</p>
+          </td></tr>
+          <tr><td style="padding:8px 30px 4px;">
+            <p style="font-size:16px;line-height:1.6;margin:0 0 14px;">Hi there,</p>
+            <p style="font-size:16px;line-height:1.6;margin:0 0 14px;">If you handle exterior maintenance or grounds improvements, we can take a look at your property and give you a straight next step.</p>
+            <p style="font-size:16px;line-height:1.6;margin:0 0 18px;">For new clients, we are offering <strong>{discount}% off</strong> a new approved landscape project.</p>
+            <table role="presentation" cellspacing="0" cellpadding="0" style="margin:22px 0;"><tr><td style="background:#256f46;padding:13px 18px;"><a href="{url}" style="color:#fff;text-decoration:none;font-size:16px;font-weight:bold;">Request a Quote</a></td></tr></table>
+            <p style="font-size:14px;line-height:1.5;color:#64748b;margin:0 0 20px;">Final pricing requires project review. Promotion is for new clients and new approved projects.</p>
+          </td></tr>
+          <tr><td style="padding:18px 30px 28px;border-top:1px solid #d5dde3;">
+            <p style="font-size:15px;line-height:1.5;margin:0;color:#334155;">Best,<br>Roberts Landscape</p>
+            <p style="font-size:12px;line-height:1.5;color:#64748b;margin:18px 0 0;">If this is not relevant, reply STOP and we will not follow up.</p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>"""
+
+        if category == "hospitality":
+            return f"""<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f5f3ee;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f3ee;padding:24px 0;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#fff;border:1px solid #e0dbd0;">
+          <tr><td style="padding:28px 30px 12px;">
+            <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">Cape Cod Outdoor Upgrades</div>
+            <h1 style="font-size:27px;line-height:1.2;margin:10px 0;color:#172033;">First impressions start outside</h1>
+            <p style="font-size:16px;line-height:1.55;color:#334155;margin:0;">{safe_name} helps hospitality properties with patios, entrance walkways, plantings, drainage, and stonework that holds up in coastal weather.</p>
+          </td></tr>
+          <tr><td style="padding:8px 30px 4px;">
+            <p style="font-size:16px;line-height:1.6;margin:0 0 14px;">Hi there,</p>
+            <p style="font-size:16px;line-height:1.6;margin:0 0 14px;">If you are planning outdoor improvements at your property, we can walk the space and give you a practical next step — no hard sell.</p>
+            <p style="font-size:16px;line-height:1.6;margin:0 0 18px;">For new clients, we are offering <strong>{discount}% off</strong> a new approved project.</p>
+            <table role="presentation" cellspacing="0" cellpadding="0" style="margin:22px 0;"><tr><td style="background:#256f46;padding:13px 18px;"><a href="{url}" style="color:#fff;text-decoration:none;font-size:16px;font-weight:bold;">Request a Quote</a></td></tr></table>
+            <p style="font-size:14px;line-height:1.5;color:#64748b;margin:0 0 20px;">Final pricing requires project review. Promotion is for new clients and new approved projects.</p>
+          </td></tr>
+          <tr><td style="padding:18px 30px 28px;border-top:1px solid #e0dbd0;">
+            <p style="font-size:15px;line-height:1.5;margin:0;color:#334155;">Best,<br>Roberts Landscape</p>
+            <p style="font-size:12px;line-height:1.5;color:#64748b;margin:18px 0 0;">If this is not relevant, reply STOP and we will not follow up.</p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>"""
+
         return f"""<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f6f4ef;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">

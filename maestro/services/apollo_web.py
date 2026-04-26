@@ -101,10 +101,9 @@ class ApolloWebProspectFinder:
         return prospects
 
     def _keywords(self, target: str) -> list[str]:
-        normalized = target.strip().casefold()
-        if normalized in {"hoa", "hoas", "homeowners association"}:
-            return ["HOA", "homeowners association", "property management", "condominium"]
-        return [target.strip()]
+        from maestro.utils.verticals import expand_target
+
+        return expand_target(target)
 
     def _best_location(self, city: str, state: str, locations: list[str]) -> str:
         combined = f"{city} {state}".casefold()

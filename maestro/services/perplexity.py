@@ -123,14 +123,12 @@ class PerplexityProspectFinder:
         return results
 
     def _build_prompt(self, target: str, location: str) -> str:
-        normalized = target.strip().casefold()
-        if normalized in {"hoa", "hoas", "homeowners association"}:
-            return (
-                f"List homeowners associations (HOA), condo associations, and property management "
-                f"companies in {location}, Massachusetts. Include each organization's official website URL."
-            )
+        from maestro.utils.verticals import expand_target
+
+        terms = expand_target(target)
+        label = " or ".join(f'"{t}"' for t in terms[:3])
         return (
-            f"List {target} companies and organizations in {location}, Massachusetts. "
+            f"List {label} organizations in {location}, Massachusetts. "
             f"Include each organization's official website URL."
         )
 

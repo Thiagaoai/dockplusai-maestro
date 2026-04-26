@@ -9,10 +9,16 @@ Output: {business, function, intent, confidence, target_agent}
 
 import json
 import re
+from typing import Any
 
 import structlog
+from pydantic import BaseModel, Field, field_validator
 
 log = structlog.get_logger()
+
+ALLOWED_BUSINESSES = {"roberts", "dockplusai"}
+ALLOWED_FUNCTIONS = {"sales", "marketing", "finance", "operations", "strategy"}
+ALLOWED_TARGET_AGENTS = {"sdr", "marketing", "cfo", "cmo", "ceo", "operations"}
 
 _SYSTEM_PROMPT = """\
 You are the triage router for MAESTRO, a multi-agent business automation system.
@@ -34,9 +40,10 @@ Routing rules:
 - Revenue, margin, cashflow, invoice, Stripe, finance → target_agent: cfo
 - Ads, ROAS, Meta, Google Ads, budget, campaign → target_agent: cmo
 - Weekly briefing, strategy, summary, overview → target_agent: ceo
-- Everything else → target_agent: operations
+- Prospecting/outbound campaigns/lists → target_agent: sdr
+- Everything else or unclear requests → target_agent: operations
 
-If confidence < 0.7, set target_agent: "clarify" and intent: "need more context".
+If confidence < 0.7, set target_agent: "operations" and intent: "need more context".
 If the message mentions "dockplus" or "dockplusai", set business: "dockplusai".
 Otherwise inherit business from context (last_active).
 """
@@ -48,6 +55,56 @@ _FALLBACK_KEYWORDS = {
     "cmo": ["ads", "roas", "meta", "google ads", "budget", "campaign", "cpc"],
     "ceo": ["briefing", "strategy", "summary", "overview", "week", "decisions"],
 }
+
+
+class TriageResult(BaseModel):
+    business: str
+    function: str
+    intent: str = Field(min_length=1, max_length=120)
+    confidence: float = Field(ge=0.0, le=1.0)
+    target_agent: str
+
+    @field_validator("business")
+    @classmethod
+    def validate_business(cls, value: str) -> str:
+        value = value.strip().casefold()
+        if value not in ALLOWED_BUSINESSES:
+            raise ValueError("invalid business")
+        return value
+
+    @field_validator("function")
+    @classmethod
+    def validate_function(cls, value: str) -> str:
+        value = value.strip().casefold()
+        aliases = {
+            "marketing_performance": "marketing",
+            "growth": "marketing",
+            "executive": "strategy",
+        }
+        value = aliases.get(value, value)
+        if value not in ALLOWED_FUNCTIONS:
+            raise ValueError("invalid function")
+        return value
+
+    @field_validator("target_agent")
+    @classmethod
+    def validate_target_agent(cls, value: str) -> str:
+        value = value.strip().casefold()
+        aliases = {
+            "prospecting": "sdr",
+            "prospecting_agent": "sdr",
+            "sdr_agent": "sdr",
+            "marketing_agent": "marketing",
+            "cfo_agent": "cfo",
+            "cmo_agent": "cmo",
+            "ceo_agent": "ceo",
+            "operations_agent": "operations",
+            "clarify": "operations",
+        }
+        value = aliases.get(value, value)
+        if value not in ALLOWED_TARGET_AGENTS:
+            raise ValueError("invalid target_agent")
+        return value
 
 
 def _keyword_fallback(text: str, last_business: str = "roberts") -> dict:
@@ -63,7 +120,7 @@ def _keyword_fallback(text: str, last_business: str = "roberts") -> dict:
         "sdr": "sales",
         "marketing": "marketing",
         "cfo": "finance",
-        "cmo": "marketing_performance",
+        "cmo": "marketing",
         "ceo": "strategy",
         "operations": "operations",
     }
@@ -83,7 +140,28 @@ def _parse_llm_response(raw: str) -> dict:
     return json.loads(match.group())
 
 
-async def triage_message(text: str, last_business: str = "roberts") -> dict:
+def _response_text(response: Any) -> str:
+    parts: list[str] = []
+    for block in getattr(response, "content", []):
+        text = getattr(block, "text", None)
+        if text:
+            parts.append(str(text))
+    return "\n".join(parts).strip()
+
+
+def _normalize_result(raw_result: dict[str, Any], last_business: str) -> dict:
+    raw_result = dict(raw_result)
+    if raw_result.get("business") == "<last_active>":
+        raw_result["business"] = last_business
+    result = TriageResult.model_validate(raw_result)
+    return result.model_dump()
+
+
+async def triage_message(
+    text: str,
+    last_business: str = "roberts",
+    anthropic_client: Any | None = None,
+) -> dict:
     """
     Classify an incoming Telegram message.
 
@@ -98,19 +176,21 @@ async def triage_message(text: str, last_business: str = "roberts") -> dict:
         return _keyword_fallback(text, last_business)
 
     try:
-        from anthropic import AsyncAnthropic
-        client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        if anthropic_client is None:
+            from anthropic import AsyncAnthropic
+
+            anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
         context = f"[last_active_business: {last_business}]\n\nUser message: {text}"
 
-        response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
+        response = await anthropic_client.messages.create(
+            model=settings.anthropic_triage_model,
             max_tokens=256,
+            temperature=0,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": context}],
         )
-        raw = response.content[0].text
-        result = _parse_llm_response(raw)
+        result = _normalize_result(_parse_llm_response(_response_text(response)), last_business)
 
         log.info(
             "triage_classified",

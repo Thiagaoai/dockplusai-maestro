@@ -37,8 +37,7 @@ class DryRunActionExecutor:
             "would_offer_slots": approval.preview.get("meeting_slots", []),
             "would_move_ghl_pipeline": True,
         }
-        if hasattr(self.store, "dry_run_actions"):
-            self.store.dry_run_actions.append(result)
+        await self._record_dry_run_action(result)
         await self.store.add_audit_log(
             event_type="tool_call",
             business=approval.business,
@@ -65,8 +64,7 @@ class DryRunActionExecutor:
             "dry_run": True,
             "preview": approval.preview,
         }
-        if hasattr(self.store, "dry_run_actions"):
-            self.store.dry_run_actions.append(result)
+        await self._record_dry_run_action(result)
         await self.store.add_audit_log(
             event_type="tool_call",
             business=approval.business,
@@ -87,8 +85,7 @@ class DryRunActionExecutor:
             "subject": approval.preview.get("email", {}).get("subject"),
             "source_refs": source_refs,
         }
-        if hasattr(self.store, "dry_run_actions"):
-            self.store.dry_run_actions.append(result)
+        await self._record_dry_run_action(result)
         await self.store.add_audit_log(
             event_type="tool_call",
             business=approval.business,
@@ -97,6 +94,12 @@ class DryRunActionExecutor:
             payload=result,
         )
         return result
+
+    async def _record_dry_run_action(self, result: dict[str, Any]) -> None:
+        if hasattr(self.store, "record_dry_run_action"):
+            await self.store.record_dry_run_action(result)
+        elif hasattr(self.store, "dry_run_actions"):
+            self.store.dry_run_actions.append(result)
 
     async def execute_prospecting_batch(self, approval: ApprovalRequest) -> dict[str, Any]:
         profile = load_profile(approval.business)

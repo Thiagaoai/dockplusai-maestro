@@ -126,6 +126,10 @@ class InMemoryStore:
         self.clients_web_verified.append(item)
         return item
 
+    async def record_dry_run_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        self.dry_run_actions.append(action)
+        return action
+
     async def add_audit_log(
         self,
         event_type: str,

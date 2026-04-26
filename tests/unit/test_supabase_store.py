@@ -16,8 +16,7 @@ class FakeQuery:
         self._on_conflict = None
         self._filters = []
         self._limit = None
-        self._order = None
-        self._desc = False
+        self._orders = []
 
     def select(self, *_args):
         self._operation = "select"
@@ -48,8 +47,7 @@ class FakeQuery:
         return self
 
     def order(self, key, desc=False):
-        self._order = key
-        self._desc = desc
+        self._orders.append((key, desc))
         return self
 
     def execute(self):
@@ -80,8 +78,8 @@ class FakeQuery:
         selected = list(rows)
         for key, value in self._filters:
             selected = [row for row in selected if row.get(key) == value]
-        if self._order:
-            selected = sorted(selected, key=lambda row: row.get(self._order) or 0, reverse=self._desc)
+        for key, desc in reversed(self._orders):
+            selected = sorted(selected, key=lambda row: row.get(key) or 0, reverse=desc)
         if self._limit is not None:
             selected = selected[: self._limit]
         return selected
@@ -95,6 +93,13 @@ class FakeSupabaseClient:
         return FakeQuery(self, table_name)
 
 
+class FailingSupabaseClient(FakeSupabaseClient):
+    def table(self, table_name: str):
+        if table_name in {"approval_threads", "dry_run_actions"}:
+            raise RuntimeError(f"missing table {table_name}")
+        return super().table(table_name)
+
+
 @pytest.fixture
 def supabase_store():
     settings = Settings(
@@ -103,6 +108,16 @@ def supabase_store():
         supabase_service_key="service-key",
     )
     return SupabaseStore(settings, client=FakeSupabaseClient())
+
+
+@pytest.fixture
+def supabase_store_missing_runtime_tables():
+    settings = Settings(
+        storage_backend="supabase",
+        supabase_url="https://example.supabase.co",
+        supabase_service_key="service-key",
+    )
+    return SupabaseStore(settings, client=FailingSupabaseClient())
 
 
 @pytest.mark.asyncio
@@ -162,6 +177,47 @@ async def test_supabase_store_approval_and_audit(supabase_store):
     )
     assert audit.hash
     assert supabase_store.client.tables["audit_log"][0]["hash"] == audit.hash
+
+
+@pytest.mark.asyncio
+async def test_supabase_store_maps_approval_threads(supabase_store):
+    approval = ApprovalRequest(
+        business="roberts",
+        event_id="approval-thread-1",
+        action="sdr_dry_run_follow_up",
+        preview={"lead": "Alice"},
+    )
+    await supabase_store.create_approval(approval)
+
+    await supabase_store.map_approval_to_thread(approval.id, "thread-123")
+
+    assert await supabase_store.get_thread_for_approval(approval.id) == "thread-123"
+    assert supabase_store.client.tables["approval_threads"][0]["approval_id"] == approval.id
+
+
+@pytest.mark.asyncio
+async def test_supabase_store_records_dry_run_actions(supabase_store):
+    action = {
+        "action": "sdr_dry_run_follow_up",
+        "approval_id": "approval-1",
+        "business": "roberts",
+        "dry_run": True,
+    }
+
+    await supabase_store.record_dry_run_action(action)
+
+    rows = supabase_store.client.tables["dry_run_actions"]
+    assert rows[0]["approval_id"] == "approval-1"
+    assert rows[0]["payload"] == action
+
+
+@pytest.mark.asyncio
+async def test_supabase_store_runtime_tables_fail_open(supabase_store_missing_runtime_tables):
+    await supabase_store_missing_runtime_tables.map_approval_to_thread("approval-1", "thread-1")
+    assert await supabase_store_missing_runtime_tables.get_thread_for_approval("approval-1") is None
+
+    action = {"action": "dry_run", "approval_id": "approval-1", "business": "roberts"}
+    assert await supabase_store_missing_runtime_tables.record_dry_run_action(action) == action
 
 
 @pytest.mark.asyncio

@@ -50,3 +50,31 @@ class HighLevelClient:
             "pipeline_count": len(data.get("pipelines", [])),
             "pipelines": data.get("pipelines", []),
         }
+
+    async def move_opportunity_stage(
+        self,
+        business: str,
+        opportunity_id: str,
+        stage_id: str,
+    ) -> dict[str, Any]:
+        token = self.settings.ghl_token_for_business(business)
+        if not token:
+            return {"status": "skipped", "reason": "missing_ghl_token"}
+        if not opportunity_id or not stage_id:
+            return {"status": "skipped", "reason": "missing_opportunity_or_stage"}
+
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.put(
+                f"{self.base_url}/opportunities/{opportunity_id}",
+                json={"pipelineStageId": stage_id},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Version": "2021-07-28",
+                    "Content-Type": "application/json",
+                },
+            )
+        if response.status_code >= 400:
+            raise HighLevelError(
+                f"HighLevel request failed: {response.status_code}: {response.text[:500]}"
+            )
+        return {"status": "ok", "opportunity_id": opportunity_id, "stage_id": stage_id}
