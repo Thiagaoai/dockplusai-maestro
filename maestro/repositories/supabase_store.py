@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from maestro.config import Settings
@@ -101,10 +101,17 @@ class SupabaseStore:
             "metric_type": metric["metric_type"],
             "metric_data": metric["metric_data"],
             "generated_by": metric.get("generated_by"),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
         self.client.table("business_metrics").insert(payload).execute()
         return metric
+
+    async def upsert_prospect_queue_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        self.client.table("prospect_queue").upsert(
+            item,
+            on_conflict="business,source_type,source_ref",
+        ).execute()
+        return item
 
     async def add_audit_log(
         self,
@@ -163,7 +170,7 @@ class SupabaseStore:
         if approval.status != ApprovalStatus.pending:
             return approval
         approval.status = ApprovalStatus.approved if approved else ApprovalStatus.rejected
-        approval.decided_at = datetime.now(timezone.utc)
+        approval.decided_at = datetime.now(UTC)
         self.client.table("approval_requests").update(
             {
                 "status": approval.status.value,

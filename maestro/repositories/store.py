@@ -23,6 +23,7 @@ class InMemoryStore:
         self.audit_log: list[AuditLogRecord] = []
         self.approvals: dict[str, ApprovalRequest] = {}
         self.business_metrics: list[dict[str, Any]] = []
+        self.prospect_queue: list[dict[str, Any]] = []
         self.paused: bool = False
         self.dry_run_actions: list[dict[str, Any]] = []
         self.approval_threads: dict[str, str] = {}  # approval_id -> thread_id
@@ -67,6 +68,18 @@ class InMemoryStore:
     async def add_business_metric(self, metric: dict[str, Any]) -> dict[str, Any]:
         self.business_metrics.append(metric)
         return metric
+
+    async def upsert_prospect_queue_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        for idx, existing in enumerate(self.prospect_queue):
+            if (
+                existing.get("business") == item.get("business")
+                and existing.get("source_type") == item.get("source_type")
+                and existing.get("source_ref") == item.get("source_ref")
+            ):
+                self.prospect_queue[idx] = {**existing, **item}
+                return self.prospect_queue[idx]
+        self.prospect_queue.append(item)
+        return item
 
     async def add_audit_log(
         self,

@@ -24,6 +24,8 @@ dependencies = [
   "langchain-anthropic>=0.3.0",
   "langchain-openai>=0.2.0",
   "langsmith>=0.1.0",
+  # Spreadsheets / imports
+  "xlrd>=2.0.1",
   # Database / State
   "supabase>=2.0.0",
   "psycopg[binary]>=3.2.0",

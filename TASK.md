@@ -11,7 +11,7 @@
 
 ## STATUS ATUAL — implementado no scaffold local
 
-> Estado: backend/agents funcionando em modo **dry-run**, sem site/UI. Ações externas reais ainda aguardam credenciais e tools de produção.
+> Estado: backend/agents funcionando em modo **dry-run**, sem site/UI. Ações externas reais já têm Resend para email, GHL direto e camada Composio para Calendar/HighLevel quando conectado.
 
 - [x] FastAPI app com `/health`
 - [x] Webhook Telegram com validação de secret + whitelist `chat_id`
@@ -31,7 +31,7 @@
 - [x] Approval callback genérico para SDR, Marketing, CMO e Operations
 - [x] Weekly scheduler chama CFO/CMO/CEO em dry-run
 - [x] Testes E2E cobrindo vertical slice + agents Fase 1
-- [x] Cobertura atual: 74% (`13 passed`)
+- [x] Test suite atual: `16 passed`
 
 ### Próximo bloco real
 
@@ -39,11 +39,31 @@
 - [x] Persistir `processed_events`, `audit_log`, `agent_runs`, `approval_requests`, `leads`, `business_metrics`
 - [x] Escolher backend via `.env`: `STORAGE_BACKEND=memory|supabase`
 - [x] Testes mockados para `SupabaseStore`
-- [ ] Rodar `scripts/seed_supabase.sql` no projeto Supabase real
-- [ ] Preencher `.env` com `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `STORAGE_BACKEND=supabase`
+- [x] Script para aplicar schema no Supabase por `SUPABASE_DB_URL`
+- [x] Rodar `scripts/seed_supabase.sql` no projeto Supabase real
+- [x] Projeto Supabase `maestro` criado/conectado via Composio: `nithporoqakujydqfpsa`
+- [x] Tabelas verificadas no Supabase: 10 tabelas core criadas
+- [x] Triggers append-only do `audit_log` verificados: `no_update_audit`, `no_delete_audit`
+- [x] Preencher `.env` com `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `STORAGE_BACKEND=supabase`
+- [x] Smoke test local usando Supabase real: Telegram → CFO → `agent_runs` + `business_metrics` + `processed_events`
+- [x] Composio CLI autenticado no workspace `dockplusai_workspace`
+- [x] Cliente Composio adicionado ao backend para executar tools via CLI
+- [x] Executor SDR preparado para `DRY_RUN=false`: Resend email + Calendar event + HighLevel pipeline lookup após aprovação humana
+- [x] Resend definido como canal primário de email SDR; Gmail não é obrigatório para envio
+- [x] Gmail conectado no Composio e validado com leitura mínima (`GMAIL_FETCH_EMAILS`)
+- [x] Google Calendar conectado no Composio e validado com listagem read-only (`GOOGLECALENDAR_LIST_CALENDARS`)
+- [x] GHL direto via API adicionado como fallback/primary para pipeline quando Composio não enxerga HighLevel
+- [x] GHL DockPlus AI validado direto na API: pipeline lookup OK
+- [x] Composio HighLevel verificado: sem active connection no CLI/workspace atual
+- [x] Roberts `do_not_contact` hard block criado: Kim Williams nunca entra em prospecting/follow-up/SDR
+- [x] Importador CSV de clientes/prospects Roberts criado com dedupe e bloqueio `do_not_contact`
+- [ ] GHL Roberts token válido direto na API
+- [ ] Prospectar clientes existentes nos pipelines Roberts ou CSV, excluindo `do_not_contact`
+- [x] Autorizar Google Calendar no Composio
+- [ ] Autorizar HighLevel/GHL no Composio
 - [ ] Conectar Telegram dev bot real (`@maestro_dev_bot`)
 - [ ] Conectar GHL sandbox real
-- [ ] Trocar dry-run SDR por tools reais Gmail + Calendar + GHL, ainda com HITL
+- [ ] Validar fluxo real SDR aprovado: email enviado + calendar criado + GHL consultado, ainda com HITL
 - [ ] Adicionar LangSmith traces reais por agent
 - [ ] Adicionar LLM real nos subagents onde fizer diferença, preservando fallback determinístico
 
@@ -67,7 +87,9 @@
 - [ ] **[G]** LangSmith: projeto `maestro-prod` criado, primeiro trace de teste enviado
 - [ ] **[T]** GHL Roberts: location token + webhook secret. Testar: criar contato fake, receber 1 evento webhook
 - [ ] **[T]** GHL DockPlus AI: idem
-- [ ] **[G]** Gmail OAuth2: `refresh_token` gerado, testar `send` + `read` numa conta de teste
+- [ ] **[G]** Resend: domínio/from validado, testar envio real para conta controlada
+- [x] **[G]** Gmail OAuth2: conectado no Composio para leitura/histórico/reply-in-thread; não bloqueia SDR send
+- [x] **[G]** Google Calendar: conexão/listagem validada no Composio
 - [ ] **[G]** Google Calendar: testar `find free slots` + `create event`
 - [ ] **[T]** Postforme: API key válida + 1 post teste publicado (pode deletar depois)
 - [ ] **[T]** Meta Marketing API: developer token + testar `GET /insights` em 1 campanha Roberts
@@ -239,7 +261,7 @@
 ### Testes integração SDR
 - [ ] **[G]** `tests/integration/test_sdr_pipeline.py` — end-to-end com sandbox:
   - Webhook fake GHL → Telegram sandbox recebe mensagem
-  - Simula aprovação via bot API → email enviado (Gmail sandbox) + calendar criado + GHL movido
+  - Simula aprovação via bot API → email enviado (Resend sandbox) + calendar criado + GHL movido
 - [ ] **[T]** Teste manual com lead real Roberts: Thiago aprova fluxo completo, confirma email e calendar corretos
 
 ---
@@ -466,6 +488,8 @@
 - [ ] **[G]** `maestro/tools/_enrichment/apollo.py` — integração Apollo MCP (já temos acesso)
 - [ ] **[G]** `maestro/tools/_enrichment/hunter.py` — verificação de emails
 - [ ] **[G]** `maestro/tools/_enrichment/maps.py` — Google Maps Places API
+- [x] **[G]** CSV customer/prospect import como fonte imediata para Roberts, sem depender de token GHL
+- [ ] **[G]** Prospecting Agent híbrido: CSV/customers + GHL pipeline + online scraping/enrichment, sempre com HITL
 - [ ] **[G]** Prospecting Agent + 7 subagents (icp_definer, list_builder, enricher, personalizer, cadence_orchestrator, reply_classifier, deliverability_monitor)
 - [ ] **[G]** Customer Success Agent + 4 subagents
 - [ ] **[G]** Brand Guardian subagent transversal

@@ -32,6 +32,13 @@ Run tests:
 .venv/bin/pytest
 ```
 
+Apply Supabase schema:
+
+```bash
+SUPABASE_DB_URL='postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres' \
+  .venv/bin/python scripts/apply_supabase_schema.py
+```
+
 ## Current Scope
 
 Implemented:

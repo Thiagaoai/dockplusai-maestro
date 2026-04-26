@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS leads (
   status TEXT DEFAULT 'new',
   thiago_approved BOOLEAN DEFAULT FALSE,
   thiago_approved_at TIMESTAMPTZ,
+  raw JSONB,
   enrichment_data JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -117,6 +118,29 @@ CREATE TABLE IF NOT EXISTS leads (
 
 CREATE INDEX IF NOT EXISTS idx_leads_business_status ON leads(business, status);
 CREATE INDEX IF NOT EXISTS idx_leads_score ON leads(qualification_score DESC);
+CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
+
+CREATE TABLE IF NOT EXISTS prospect_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business TEXT NOT NULL,
+  lead_id UUID REFERENCES leads(id),
+  source_type TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  source_ref TEXT,
+  status TEXT NOT NULL DEFAULT 'queued',
+  priority INT NOT NULL DEFAULT 50,
+  sequence_bucket TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (business, source_type, source_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_prospect_queue_next
+  ON prospect_queue(business, status, priority DESC, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_prospect_queue_source
+  ON prospect_queue(business, source_type, status);
 
 CREATE TABLE IF NOT EXISTS memory_chunks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
