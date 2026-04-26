@@ -1,0 +1,85 @@
+{
+  "business_id": "dockplusai",
+  "business_name": "DockPlus AI",
+  "business_type": "B2B",
+  "active": true,
+  "contact": {
+    "phone": "(508) 464-4878",
+    "email": "hello@dockplus.ai",
+    "address": "Cape Cod, MA",
+    "website": "https://dockplus.ai"
+  },
+  "service_area": "global",
+  "tone": {
+    "voice": "Strategic, direct, technical enough to build trust, business-first.",
+    "formality": 3,
+    "do": ["connect AI to profit", "be specific", "avoid hype"],
+    "do_not": ["promise magic", "overuse buzzwords", "sound like a generic agency"],
+    "signature": "Best,\nDockPlus AI",
+    "sample_emails": [
+      "The main question is not whether AI can automate it, but whether it can improve revenue, speed, or margin."
+    ],
+    "sample_posts": [
+      "AI agents only matter when they remove bottlenecks or create measurable growth."
+    ]
+  },
+  "offerings": [
+    {
+      "name": "AI automation retainer",
+      "description": "Design, build, and operate AI workflows and agents for growing companies.",
+      "ticket_avg_usd": 10000,
+      "ticket_min_usd": 5000,
+      "ticket_max_usd": 50000,
+      "season": "year-round",
+      "conversion_rate": 0.3
+    }
+  ],
+  "qualification_criteria": {
+    "min_ticket_usd": 5000,
+    "in_service_area_required": false,
+    "ready_within_months_max": 3,
+    "custom_rules": ["Prioritize companies with operational bottlenecks and budget."]
+  },
+  "decision_thresholds": {
+    "thiago_approval_above_usd": 500,
+    "auto_book_meeting": false,
+    "auto_send_email_to_lead": false,
+    "auto_publish_social": false
+  },
+  "marketing": {
+    "instagram_handle": "@dockplusai",
+    "posting_frequency_per_week": 5,
+    "best_posting_times": ["Monday 09:00", "Wednesday 09:00"],
+    "visual_style": "Screens, systems, diagrams, outcomes, concise proof.",
+    "hashtag_strategy": {
+      "local": ["#CapeCodBusiness", "#BostonBusiness"],
+      "niche": ["#AIAutomation", "#AIAgents", "#OpsAutomation", "#BusinessGrowth"]
+    }
+  },
+  "ads": {
+    "meta_ad_account_id": null,
+    "google_ads_customer_id": null,
+    "google_lsa_active": false,
+    "monthly_budget_usd": 1000
+  },
+  "brand_rules": {
+    "forbidden_words": ["fully autonomous company", "guaranteed ROI"],
+    "required_disclaimers": [],
+    "competitor_mentions_allowed": false
+  },
+  "icp": {
+    "industries": ["home services", "professional services", "B2B SaaS", "local service businesses"],
+    "company_size": {"min_employees": 5, "max_employees": 250},
+    "revenue_range": {"min_usd": 1000000, "max_usd": 50000000},
+    "geography": ["United States"],
+    "tech_stack_signals": ["CRM", "Google Workspace", "Stripe", "paid ads"],
+    "buying_signals": ["hiring ops", "missed leads", "manual reporting", "sales backlog"],
+    "pain_points": ["slow follow-up", "inconsistent marketing", "manual admin", "poor visibility"]
+  },
+  "team": {
+    "primary_humans": [
+      {"name": "Thiago", "role": "founder"},
+      {"name": "Joana", "role": "sales"}
+    ]
+  }
+}

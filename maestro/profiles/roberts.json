@@ -1,0 +1,76 @@
+{
+  "business_id": "roberts",
+  "business_name": "Roberts Landscape",
+  "business_type": "B2C",
+  "active": true,
+  "contact": {
+    "phone": "(508) 464-4878",
+    "email": "hello@robertslandscape.example",
+    "address": "Cape Cod, MA",
+    "website": "https://robertslandscape.example"
+  },
+  "service_area": ["Falmouth", "Mashpee", "Barnstable", "Sandwich", "Cape Cod"],
+  "tone": {
+    "voice": "Clear, professional, local, practical, high-trust.",
+    "formality": 3,
+    "do": ["sound local", "be concise", "ask for photos and timing"],
+    "do_not": ["hard sell", "promise price without visit", "sound corporate"],
+    "signature": "Best,\nRoberts Landscape",
+    "sample_emails": [
+      "Thanks for reaching out. We can take a look and suggest the best next step."
+    ],
+    "sample_posts": [
+      "Granite, drainage, and clean edges make a patio last on Cape Cod."
+    ]
+  },
+  "offerings": [
+    {
+      "name": "patio and hardscape project",
+      "description": "Custom patio, walkway, retaining, drainage, and outdoor living projects.",
+      "ticket_avg_usd": 20000,
+      "ticket_min_usd": 5000,
+      "ticket_max_usd": 75000,
+      "season": "spring-fall",
+      "conversion_rate": 0.18
+    }
+  ],
+  "qualification_criteria": {
+    "min_ticket_usd": 5000,
+    "in_service_area_required": true,
+    "ready_within_months_max": 6,
+    "custom_rules": ["Prioritize high-ticket patios, drainage, granite, and outdoor living."]
+  },
+  "decision_thresholds": {
+    "thiago_approval_above_usd": 500,
+    "auto_book_meeting": false,
+    "auto_send_email_to_lead": false,
+    "auto_publish_social": false
+  },
+  "marketing": {
+    "instagram_handle": "@robertslandscape",
+    "posting_frequency_per_week": 5,
+    "best_posting_times": ["Tuesday 18:00", "Thursday 18:00"],
+    "visual_style": "Real project photos, clean before/after, Cape Cod local proof.",
+    "hashtag_strategy": {
+      "local": ["#CapeCod", "#FalmouthMA", "#MashpeeMA", "#BarnstableMA"],
+      "niche": ["#Hardscape", "#PatioDesign", "#LandscapeDesign", "#OutdoorLiving"]
+    }
+  },
+  "ads": {
+    "meta_ad_account_id": null,
+    "google_ads_customer_id": null,
+    "google_lsa_active": true,
+    "monthly_budget_usd": 3000
+  },
+  "brand_rules": {
+    "forbidden_words": ["guaranteed cheapest", "instant quote"],
+    "required_disclaimers": ["Final pricing requires project review."],
+    "competitor_mentions_allowed": false
+  },
+  "team": {
+    "primary_humans": [
+      {"name": "Thiago", "role": "owner"},
+      {"name": "Bruna", "role": "field qualification"}
+    ]
+  }
+}
