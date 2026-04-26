@@ -59,7 +59,8 @@ async def main() -> None:
     print(f"  expiration : {expiration} (ms since epoch — renew before this)")
     print()
     print("Save this history ID to Redis so the webhook knows where to start:")
-    print(f"  redis-cli set 'session:{\"gmail:history_id\"}' '{{\"history_id\":\"{history_id}\"}}'")
+    session_key = "gmail:history_id"
+    print(f"  redis-cli set 'session:{session_key}' '{{\"history_id\":\"{history_id}\"}}'")
 
 
 if __name__ == "__main__":
