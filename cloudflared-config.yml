@@ -1,0 +1,7 @@
+ingress:
+  - hostname: maestro.thiagodocarmo.com
+    service: http://app:8000
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+  - service: http_status:404
