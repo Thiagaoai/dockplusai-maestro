@@ -13,3 +13,4 @@ build/
 .env.local
 .env.*
 .claude/
+scripts/setup_vps_env.sh
