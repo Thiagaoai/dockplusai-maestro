@@ -129,13 +129,13 @@ class SDRAgent:
         # Enrich via Apollo → Hunter waterfall before qualification
         enrichment = await self._maybe_enrich_lead(lead)
 
-        qualification = qualify_lead(lead, self.profile)
+        qualification = await qualify_lead(lead, self.profile)
         score = qualification["score"]
         reasoning = qualification["justification"]
         lead.qualification_score = score
         lead.qualification_reasoning = reasoning
 
-        email = draft_email(lead, self.profile)
+        email = await draft_email(lead, self.profile)
         slots = suggest_meeting_slots()
         preview = {
             "lead": {
