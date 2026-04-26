@@ -85,6 +85,27 @@
     "required_disclaimers": ["Final pricing requires project review."],
     "competitor_mentions_allowed": false
   },
+  "prospecting": {
+    "targets": [
+      {"keyword": "hoa", "label": "HOA / homeowners association", "priority": 1, "note": "Large common-area budgets, repeat seasonal work"},
+      {"keyword": "vacation rental", "label": "Vacation rental management", "priority": 1, "note": "High-volume, repeat clients — curb appeal is revenue"},
+      {"keyword": "property management", "label": "Property management company", "priority": 2, "note": "Portfolios of properties, steady pipeline"},
+      {"keyword": "real estate", "label": "Real estate agent / brokerage", "priority": 2, "note": "Referral source + pre-sale landscaping"},
+      {"keyword": "marina", "label": "Marina / boatyard", "priority": 3, "note": "Cape Cod specific, commercial grounds"},
+      {"keyword": "hotel inn", "label": "Hotel / inn / resort", "priority": 3, "note": "Commercial exterior maintenance"},
+      {"keyword": "country club golf", "label": "Country club / golf course", "priority": 3, "note": "Grounds budgets, high ticket"},
+      {"keyword": "assisted living", "label": "Assisted living / senior community", "priority": 3, "note": "Commercial grounds, reliable payer"},
+      {"keyword": "school", "label": "School / campus", "priority": 4, "note": "Public bid process but large volume"}
+    ],
+    "locations": [
+      "Falmouth", "Mashpee", "Barnstable", "Sandwich", "Bourne",
+      "Yarmouth", "Dennis", "Harwich", "Chatham", "Brewster",
+      "Orleans", "Eastham", "Provincetown",
+      "Martha's Vineyard", "Nantucket", "South Shore"
+    ],
+    "recommended_sources": ["google", "apify", "tavily"],
+    "note": "Use 'prospect web google hoa' or 'prospect web apify vacation rental' in Telegram to start a batch."
+  },
   "do_not_contact": [
     {
       "name": "Kim Williams",
