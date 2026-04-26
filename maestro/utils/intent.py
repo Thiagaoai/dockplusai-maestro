@@ -29,9 +29,11 @@ Sources: tavily, google, hunter, apollo, apify, perplexity
 
 Target is the type of business to prospect. Any business type counts.
 Common examples: hoa, condo, school, hospital, hospice, hotel, resort, marina, church,
-day care, restaurant, senior living, office park, campground, wedding venue, property manager,
-gas station, facility, gym, spa, country club, brewery, winery, event venue, real estate developer.
-Normalize to English (escola→school, hotel→hotel, posto de gasolina→gas station, etc.)
+day care, restaurant, senior living, senior center, office park, campground, wedding venue,
+property manager, gas station, facility, gym, spa, country club, brewery, winery, event venue,
+real estate developer, yacht club, vacation rental, nursing home, assisted living, preschool.
+Normalize to English (escola→school, hotel→hotel, posto de gasolina→gas station,
+creche→day care, asilo→nursing home, iate clube→yacht club, etc.)
 
 Examples:
 "quero prospectar escolas"             → {"action":"prospect_web","source":"tavily","target":"school"}

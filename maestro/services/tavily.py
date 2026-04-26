@@ -29,7 +29,10 @@ class WebProspect:
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 BAD_EMAIL_PREFIXES = ("example@", "privacy@", "noreply@", "no-reply@", "donotreply@")
-CONTACT_LINK_RE = re.compile(r"(contact|about|management|team|board|association)", re.IGNORECASE)
+CONTACT_LINK_RE = re.compile(
+    r"(contact|about|management|team|board|association|staff|faculty|administration|directory|admin|info|people)",
+    re.IGNORECASE,
+)
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -108,7 +111,7 @@ class TavilyProspectFinder:
 
         terms = expand_target(target)
         target_terms = " OR ".join(f'"{t}"' for t in terms[:3])
-        return f"{target_terms} contact email {location} MA official website"
+        return f"{target_terms} {location} MA contact email"
 
     def _prospects_from_result(
         self,

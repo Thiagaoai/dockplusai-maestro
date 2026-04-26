@@ -16,19 +16,21 @@ _VERTICALS: dict[str, list[str]] = {
     "bed and breakfast": ["bed and breakfast", "B&B", "inn", "guesthouse"],
     "inn": ["inn", "bed and breakfast", "B&B", "boutique hotel"],
     # Marine
-    "marina": ["marina", "boat yard", "yacht club", "boatyard", "boat storage"],
-    "yacht club": ["yacht club", "marina", "sailing club", "boating club"],
+    "marina": ["marina", "boat yard", "yacht club", "boatyard", "boat storage", "boat club", "sailing club"],
+    "yacht club": ["yacht club", "marina", "sailing club", "boating club", "boat club"],
     # Education
-    "school": ["school", "K-12", "private school", "academy", "elementary school"],
-    "day care": ["day care", "daycare", "child care", "preschool", "early education"],
-    "daycare": ["daycare", "day care", "child care", "preschool", "early education"],
-    "preschool": ["preschool", "day care", "early education", "nursery school"],
+    "school": ["private school", "independent school", "academy", "prep school", "day school", "K-12 school", "charter school", "Montessori"],
+    "day care": ["day care", "daycare", "child care", "preschool", "early education center"],
+    "daycare": ["daycare", "day care", "child care", "preschool", "early education center"],
+    "preschool": ["preschool", "day care", "early childhood education", "nursery school", "Montessori"],
     # Healthcare
-    "hospital": ["hospital", "medical center", "health system", "medical facility"],
-    "hospice": ["hospice", "palliative care", "home health agency", "hospice care"],
-    "senior living": ["senior living", "assisted living", "nursing home", "retirement community", "memory care"],
-    "assisted living": ["assisted living", "senior living", "nursing home", "retirement community"],
-    "nursing home": ["nursing home", "skilled nursing facility", "senior living", "assisted living"],
+    "hospital": ["hospital", "medical center", "health system", "medical facility", "outpatient clinic"],
+    "hospice": ["hospice", "palliative care", "home health agency", "hospice care", "end of life care"],
+    "senior living": ["senior living", "assisted living", "nursing home", "retirement community", "memory care", "continuing care"],
+    "assisted living": ["assisted living", "senior living", "nursing home", "retirement community", "memory care"],
+    "nursing home": ["nursing home", "skilled nursing facility", "senior living", "assisted living", "rehabilitation center"],
+    "senior center": ["senior center", "adult day program", "council on aging", "elder services"],
+    "adult day": ["adult day program", "senior center", "elder day services", "day health program"],
     # Food & Beverage
     "restaurant": ["restaurant", "cafe", "eatery", "bistro", "diner"],
     "brewery": ["brewery", "craft brewery", "taproom", "beer garden"],
@@ -50,6 +52,11 @@ _VERTICALS: dict[str, list[str]] = {
     "church": ["church", "parish", "congregation"],
     # Facilities
     "facility": ["facility", "commercial property", "institutional facility"],
+    # Cape Cod / seasonal specifics
+    "campground": ["campground", "RV park", "camping resort", "camp site", "glamping"],
+    "wedding venue": ["wedding venue", "event venue", "banquet hall", "function hall", "event space"],
+    "vacation rental": ["vacation rental", "property management", "rental company", "cottage rentals"],
+    "landscape": ["landscape company", "landscaping", "lawn care", "grounds maintenance", "lawn service"],
 }
 
 

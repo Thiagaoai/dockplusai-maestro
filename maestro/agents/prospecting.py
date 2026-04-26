@@ -2,6 +2,8 @@ from html import escape
 from typing import Any
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+from langsmith import traceable
+
 from maestro.config import Settings
 from maestro.profiles import load_profile
 from maestro.schemas.events import AgentRunRecord, ApprovalRequest, LeadRecord
@@ -43,6 +45,7 @@ DOCKPLUS_ICP_TITLES = [
 
 
 class ProspectingAgent:
+    """Prospecting agent for outbound lead generation."""
     def __init__(self, settings: Settings, store, web_finder: TavilyProspectFinder | None = None) -> None:
         self.settings = settings
         self.store = store
@@ -278,6 +281,7 @@ class ProspectingAgent:
   </body>
 </html>"""
 
+    @traceable(name="prospecting_prepare_batch", run_type="chain", tags=["agent", "prospecting"])
     async def prepare_roberts_batch(
         self,
         batch_size: int | None = None,
@@ -316,7 +320,7 @@ class ProspectingAgent:
         size = batch_size or self.settings.prospecting_batch_size_roberts
         locations = self._web_locations()
         finder = _get_finder(source, self.settings) or self.web_finder
-        max_results_per_location = max(1, min(3, size))
+        max_results_per_location = max(3, min(6, size))
         try:
             if isinstance(finder, TavilyProspectFinder):
                 found = await finder.search_prospects(
