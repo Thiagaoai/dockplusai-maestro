@@ -10,12 +10,14 @@ from maestro.memory.redis_session import (
     clear_stopped,
     delete_session,
     get_session,
+    is_stopped,
     set_session,
     set_stopped,
 )
 from maestro.repositories import store
 from maestro.schemas.events import ApprovalStatus
 from maestro.services import DryRunActionExecutor, TelegramService
+from maestro.services.cost_monitor import evaluate_cost_guard
 from maestro.utils.security import verify_telegram_chat, verify_telegram_secret
 from maestro.utils.telegram_commands import parse_prospect_web_command
 
@@ -96,39 +98,69 @@ async def _handle_message(payload: dict, settings: Settings) -> dict:
     elif text == "/start":
         _clear_pending_command(chat_id)
         result = await _do_start(update_id, telegram)
+    elif store.paused or is_stopped():
+        await telegram.send_message("MAESTRO esta pausado. Envie /start para retomar.")
+        result = {"status": "paused"}
     elif command is not None:
-        target = command["target"]
-        source = command.get("source", "tavily")
-        if not target:
-            _set_pending_command(chat_id, {"command": "prospect_web", "business": "roberts", "source": source})
-            src_hint = f" [{source}]" if source != "tavily" else ""
-            await telegram.send_message(
-                f"Qual target voce quer prospectar{src_hint}? Exemplo: hoa"
-            )
-            result = {"status": "needs_target", "agent": "prospecting", "business": "roberts", "source": source}
+        cost_guard = await evaluate_cost_guard(settings, store, source="telegram")
+        if cost_guard.should_block:
+            await telegram.send_message("MAESTRO pausado pelo cost monitor. Revise custos antes de retomar.")
+            result = {
+                "status": "blocked",
+                "reason": "cost_kill_switch_active",
+                "cost_guard": cost_guard.model_dump(),
+            }
         else:
-            _clear_pending_command(chat_id)
-            result = await _run_roberts_web_prospecting(target, source, settings, telegram)
+            result = await _handle_prospect_web_command(command, chat_id, settings, telegram)
     elif text.lower().startswith("prospect roberts"):
-        parts = text.split()
-        batch_size = settings.prospecting_batch_size_roberts
-        mode = "owned"
-        if len(parts) >= 3:
-            if parts[2].isdigit():
-                batch_size = int(parts[2])
-            elif parts[2].lower() in {"web", "scrape"}:
-                mode = "web"
-            elif parts[2].lower() == "hybrid":
-                mode = "hybrid"
-        if len(parts) >= 4 and parts[3].isdigit():
-            batch_size = int(parts[3])
-        result = await _do_roberts_batch(batch_size, mode, settings, telegram)
+        cost_guard = await evaluate_cost_guard(settings, store, source="telegram")
+        if cost_guard.should_block:
+            await telegram.send_message("MAESTRO pausado pelo cost monitor. Revise custos antes de retomar.")
+            result = {
+                "status": "blocked",
+                "reason": "cost_kill_switch_active",
+                "cost_guard": cost_guard.model_dump(),
+            }
+        else:
+            parts = text.split()
+            batch_size = settings.prospecting_batch_size_roberts
+            mode = "owned"
+            if len(parts) >= 3:
+                if parts[2].isdigit():
+                    batch_size = int(parts[2])
+                elif parts[2].lower() in {"web", "scrape"}:
+                    mode = "web"
+                elif parts[2].lower() == "hybrid":
+                    mode = "hybrid"
+            if len(parts) >= 4 and parts[3].isdigit():
+                batch_size = int(parts[3])
+            result = await _do_roberts_batch(batch_size, mode, settings, telegram)
     else:
         result = await _handle_nlp(text, chat_id, update_id, settings, telegram)
 
     if update_id:
         await store.mark_processed(f"telegram:{update_id}", "telegram", result)
     return result
+
+
+async def _handle_prospect_web_command(
+    command: dict,
+    chat_id: int,
+    settings: Settings,
+    telegram: TelegramService,
+) -> dict:
+    target = command["target"]
+    source = command.get("source", "tavily")
+    if not target:
+        _set_pending_command(chat_id, {"command": "prospect_web", "business": "roberts", "source": source})
+        src_hint = f" [{source}]" if source != "tavily" else ""
+        await telegram.send_message(
+            f"Qual target voce quer prospectar{src_hint}? Exemplo: hoa"
+        )
+        return {"status": "needs_target", "agent": "prospecting", "business": "roberts", "source": source}
+
+    _clear_pending_command(chat_id)
+    return await _run_roberts_web_prospecting(target, source, settings, telegram)
 
 
 async def _do_stop(update_id: str, telegram: TelegramService) -> dict:
@@ -161,6 +193,14 @@ async def _do_roberts_batch(
     settings: Settings,
     telegram: TelegramService,
 ) -> dict:
+    cost_guard = await evaluate_cost_guard(settings, store, source="telegram")
+    if cost_guard.should_block:
+        await telegram.send_message("MAESTRO pausado pelo cost monitor. Revise custos antes de retomar.")
+        return {
+            "status": "blocked",
+            "reason": "cost_kill_switch_active",
+            "cost_guard": cost_guard.model_dump(),
+        }
     approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(batch_size, mode=mode)
     await store.add_agent_run(run)
     if approval:
@@ -284,6 +324,14 @@ async def _run_roberts_web_prospecting(
     settings: Settings,
     telegram: TelegramService,
 ) -> dict:
+    cost_guard = await evaluate_cost_guard(settings, store, source="telegram")
+    if cost_guard.should_block:
+        await telegram.send_message("MAESTRO pausado pelo cost monitor. Revise custos antes de retomar.")
+        return {
+            "status": "blocked",
+            "reason": "cost_kill_switch_active",
+            "cost_guard": cost_guard.model_dump(),
+        }
     approval, run = await ProspectingAgent(settings, store).prepare_roberts_web_search_batch(
         target, source=source
     )
@@ -354,14 +402,20 @@ async def _handle_callback(payload: dict, settings: Settings) -> dict:
 
     parts = data.split(":")
     if len(parts) != 3 or parts[0] != "approval":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_callback")
+        result = {"status": "ignored", "reason": "invalid_callback"}
+        await store.mark_processed(event_key, "telegram", result)
+        return result
     decision_str, approval_id = parts[1], parts[2]
     if decision_str not in {"approve", "reject"}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_decision")
+        result = {"status": "ignored", "reason": "invalid_decision", "approval_id": approval_id}
+        await store.mark_processed(event_key, "telegram", result)
+        return result
 
     approval = await store.get_approval(approval_id)
     if not approval:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="approval_not_found")
+        result = {"status": "ignored", "reason": "approval_not_found", "approval_id": approval_id}
+        await store.mark_processed(event_key, "telegram", result)
+        return result
     if approval.status != ApprovalStatus.pending:
         result = {"status": "already_decided", "approval_status": approval.status}
         await store.mark_processed(event_key, "telegram", result, business=approval.business)
