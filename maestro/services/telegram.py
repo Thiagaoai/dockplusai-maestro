@@ -14,7 +14,13 @@ class TelegramService:
 
     async def send_approval_card(self, approval_id: str, preview: dict[str, Any]) -> dict[str, Any]:
         text = self._format_approval_text(preview)
-        approve_label = "Approve real send" if not preview.get("dry_run", True) else "Approve dry-run"
+        is_marketing = "caption" in preview
+        if is_marketing:
+            approve_label = "Publicar" if not preview.get("dry_run", True) else "Aprovar (dry-run)"
+            reject_label = "Rejeitar"
+        else:
+            approve_label = "Aprovar envio" if not preview.get("dry_run", True) else "Aprovar dry-run"
+            reject_label = "Rejeitar"
         payload = {
             "chat_id": self.settings.telegram_thiago_chat_id,
             "text": text,
@@ -22,7 +28,7 @@ class TelegramService:
                 "inline_keyboard": [
                     [
                         {"text": approve_label, "callback_data": f"approval:approve:{approval_id}"},
-                        {"text": "Reject", "callback_data": f"approval:reject:{approval_id}"},
+                        {"text": reject_label, "callback_data": f"approval:reject:{approval_id}"},
                     ]
                 ]
             },
@@ -81,6 +87,29 @@ class TelegramService:
                     f"Dry run: {preview.get('dry_run', True)}",
                 ]
             )
+            return "\n".join(lines)
+        if "caption" in preview:
+            topic = preview.get("topic", "")
+            caption = preview.get("caption", "")
+            caption_preview = caption[:120] + "…" if len(caption) > 120 else caption
+            hashtags = " ".join((preview.get("hashtags") or [])[:6])
+            image_url = preview.get("image_url") or ""
+            scheduled_at = preview.get("scheduled_at") or "imediato"
+            platform = preview.get("platform", "instagram")
+            lines = [
+                f"*Post approval — {platform.title()}*",
+                "",
+                f"Tema: {topic}",
+                f"Caption: {caption_preview}",
+            ]
+            if hashtags:
+                lines.append(f"Hashtags: {hashtags}")
+            if image_url:
+                lines.append(f"Imagem: {image_url[:80]}")
+            lines.extend([
+                f"Agendado: {scheduled_at}",
+                f"Dry run: {preview.get('dry_run', True)}",
+            ])
             return "\n".join(lines)
         if "lead" not in preview:
             title = preview.get("topic") or preview.get("task") or preview.get("request") or "Action"

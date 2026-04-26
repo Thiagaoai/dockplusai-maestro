@@ -23,7 +23,9 @@ class MarketingAgent:
             "caption": post_content["caption"],
             "hashtags": post_content["hashtags"],
             "visual_prompts": post_content["visual_prompts"],
+            "image_url": post_content.get("image_url", ""),
             "scheduled_at": post_content["scheduled_at"],
+            "platform": "instagram",
             "dry_run": self.settings.dry_run,
             "profit_signal": "demand_generation",
         }

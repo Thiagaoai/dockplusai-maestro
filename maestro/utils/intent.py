@@ -21,6 +21,8 @@ Actions:
                      fields: source (default "tavily"), target (type of business, may be empty string)
 - "prospect_batch" → run Roberts owned-list email batch
                      fields: mode ("owned"|"web"|"hybrid", default "owned"), batch_size (int, optional)
+- "create_post"    → create a social media post (Instagram) with AI-generated image, caption, hashtags
+                     fields: topic (what the post is about, in English), business ("roberts"|"dockplusai", default "roberts")
 - "stop"           → pause all MAESTRO agents
 - "start"          → resume all MAESTRO agents
 - "unknown"        → everything else (general questions, status, chat)
@@ -47,13 +49,17 @@ Examples:
 "pode continuar"                       → {"action":"start"}
 "roda um batch de 5"                   → {"action":"prospect_batch","mode":"owned","batch_size":5}
 "roda o batch web do roberts"          → {"action":"prospect_batch","mode":"web"}
+"cria um post sobre jardinagem"        → {"action":"create_post","topic":"garden design","business":"roberts"}
+"faz um post de limpeza de primavera"  → {"action":"create_post","topic":"spring cleanup","business":"roberts"}
+"post dockplus sobre automação com IA" → {"action":"create_post","topic":"AI automation","business":"dockplusai"}
+"quero um post sobre paisagismo"       → {"action":"create_post","topic":"landscaping","business":"roberts"}
 "me fala sobre o maestro"              → {"action":"unknown"}
 "qual o status?"                       → {"action":"unknown"}
 """
 
 _JSON_RE = re.compile(r"\{[^{}]+\}", re.DOTALL)
 
-_VALID_ACTIONS = {"prospect_web", "prospect_batch", "stop", "start", "unknown"}
+_VALID_ACTIONS = {"prospect_web", "prospect_batch", "create_post", "stop", "start", "unknown"}
 _VALID_SOURCES = {"tavily", "google", "hunter", "apollo", "apify", "perplexity"}
 _VALID_MODES = {"owned", "web", "hybrid"}
 
@@ -65,6 +71,8 @@ class TelegramIntent:
     target: str = ""
     mode: str = "owned"
     batch_size: int | None = None
+    topic: str = ""
+    business: str = "roberts"
 
 
 async def parse_telegram_intent(text: str, settings: Settings) -> TelegramIntent:
@@ -122,12 +130,18 @@ async def parse_telegram_intent(text: str, settings: Settings) -> TelegramIntent
             except (ValueError, TypeError):
                 pass
 
+        business = str(data.get("business") or "roberts").strip()
+        if business not in {"roberts", "dockplusai"}:
+            business = "roberts"
+
         intent = TelegramIntent(
             action=action,
             source=source,
             target=str(data.get("target") or "").strip(),
             mode=mode,
             batch_size=batch_size,
+            topic=str(data.get("topic") or "").strip(),
+            business=business,
         )
         log.info("intent_classified", text=text[:80], action=action, target=intent.target, source=source)
         return intent

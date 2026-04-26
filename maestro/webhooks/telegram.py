@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
+from maestro.agents.marketing import MarketingAgent
 from maestro.agents.prospecting import ProspectingAgent
 from maestro.config import Settings, get_settings
 from maestro.graph import MaestroGraph
@@ -263,6 +264,14 @@ async def _handle_nlp(
             telegram,
         )
 
+    if intent.action == "create_post":
+        _clear_pending_command(chat_id)
+        if not intent.topic:
+            _set_pending_command(chat_id, {"command": "create_post", "business": intent.business})
+            await telegram.send_message("Qual o tema do post? Exemplo: spring cleanup, lawn care tips")
+            return {"status": "needs_topic", "agent": "marketing", "business": intent.business}
+        return await _do_create_marketing_post(intent.topic, intent.business, settings, telegram)
+
     # NLP returned unknown — use pending command as fallback before giving up
     pending = _get_pending_command(chat_id)
     if pending.get("command") == "prospect_web":
@@ -274,12 +283,22 @@ async def _handle_nlp(
         _clear_pending_command(chat_id)
         return await _run_roberts_web_prospecting(target, source, settings, telegram)
 
+    if pending.get("command") == "create_post":
+        topic = text.strip()
+        if not topic or topic.startswith("/"):
+            _clear_pending_command(chat_id)
+            return {"status": "cancelled", "agent": "marketing"}
+        business = pending.get("business", "roberts")
+        _clear_pending_command(chat_id)
+        return await _do_create_marketing_post(topic, business, settings, telegram)
+
     await telegram.send_message(
         "Não entendi. Exemplos:\n"
         "• *quero prospectar escolas*\n"
         "• *busca hotéis com perplexity*\n"
         "• *prospect web hoa*\n"
         "• *roda um batch de 5*\n"
+        "• *cria um post sobre jardinagem*\n"
         "• */stop* ou */start*"
     )
     graph = MaestroGraph(settings, store)
@@ -390,6 +409,45 @@ async def _run_roberts_web_prospecting(
         "source": source,
         "target": target,
     }
+
+
+async def _do_create_marketing_post(
+    topic: str,
+    business: str,
+    settings: Settings,
+    telegram: TelegramService,
+) -> dict:
+    cost_guard = await evaluate_cost_guard(settings, store, source="telegram")
+    if cost_guard.should_block:
+        await telegram.send_message("MAESTRO pausado pelo cost monitor. Revise custos antes de retomar.")
+        return {"status": "blocked", "reason": "cost_kill_switch_active", "cost_guard": cost_guard.model_dump()}
+
+    from maestro.profiles import load_profile
+
+    profile = load_profile(business)
+    agent = MarketingAgent(settings, profile)
+    result, run = await agent.create_post(topic)
+    await store.add_agent_run(run)
+
+    if result.approval:
+        await store.create_approval(result.approval)
+        await store.add_audit_log(
+            event_type="agent_decision",
+            business=business,
+            agent="marketing",
+            action="approval_requested",
+            payload={"approval_id": result.approval.id, "topic": topic},
+        )
+        await telegram.send_approval_card(result.approval.id, result.approval.preview)
+        return {
+            "status": "approval_requested",
+            "agent": "marketing",
+            "business": business,
+            "approval_id": result.approval.id,
+            "topic": topic,
+        }
+
+    return {"status": "draft_ready", "agent": "marketing", "business": business, "topic": topic}
 
 
 async def _handle_callback(payload: dict, settings: Settings) -> dict:

@@ -15,9 +15,10 @@ You are the social media operator for {{ business_name }}. You write posts that 
 **{{ topic }}**
 
 ## Platform context
-- Primary channels: {{ marketing.platforms | join(", ") if marketing.platforms else "Instagram, Facebook" }}
-- Hashtag strategy — local: {{ marketing.hashtag_strategy.local | join(", ") if marketing.hashtag_strategy.local else "none" }}
-- Hashtag strategy — niche: {{ marketing.hashtag_strategy.niche | join(", ") if marketing.hashtag_strategy.niche else "none" }}
+- Instagram: @{{ marketing.instagram_handle }}
+- Posting: {{ marketing.posting_frequency_per_week }}x per week
+- Hashtag strategy — local: {{ marketing.hashtag_strategy.get("local", []) | join(", ") or "none" }}
+- Hashtag strategy — niche: {{ marketing.hashtag_strategy.get("niche", []) | join(", ") or "none" }}
 
 ## Your task
 1. Write a caption that reflects the tone exactly — not a template, a real post

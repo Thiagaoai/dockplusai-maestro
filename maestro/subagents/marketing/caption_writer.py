@@ -45,10 +45,12 @@ async def create_post_with_llm(topic: str, profile: BusinessProfile, settings) -
     from maestro.subagents.marketing.hashtag_strategist import choose_hashtags
     from maestro.subagents.marketing.posting_scheduler import suggest_post_time
 
+    visual_prompts = create_visual_prompts(topic, profile)
     fallback = {
         "caption": write_caption(topic, profile),
         "hashtags": choose_hashtags(profile),
-        "visual_prompts": create_visual_prompts(topic, profile),
+        "visual_prompts": visual_prompts,
+        "image_url": "",
         "scheduled_at": suggest_post_time(profile),
         "rationale": "template fallback",
     }
@@ -57,6 +59,7 @@ async def create_post_with_llm(topic: str, profile: BusinessProfile, settings) -
         return fallback
 
     try:
+        from maestro.subagents.marketing.content_creator import generate_image
         from maestro.utils.llm import SONNET, call_claude
         from maestro.utils.prompts import load_prompt
 
@@ -81,22 +84,30 @@ async def create_post_with_llm(topic: str, profile: BusinessProfile, settings) -
 
         scheduled_at = result.get("scheduled_at") or suggest_post_time(profile)
         hashtags = result.get("hashtags") or choose_hashtags(profile)
-        visual_prompts = result.get("visual_prompts") or create_visual_prompts(topic, profile)
+        final_visual_prompts = result.get("visual_prompts") or visual_prompts
+
+        image_url = await generate_image(final_visual_prompts[0], settings)
 
         log.info(
             "caption_written",
             business=profile.business_id,
             topic=topic[:40],
             hashtags_count=len(hashtags),
+            has_image=bool(image_url),
         )
         return {
             "caption": result.get("caption", fallback["caption"]),
             "hashtags": hashtags,
-            "visual_prompts": visual_prompts,
+            "visual_prompts": final_visual_prompts,
+            "image_url": image_url,
             "scheduled_at": scheduled_at,
             "rationale": result.get("rationale", ""),
         }
 
     except Exception as exc:
         log.warning("caption_writer_llm_failed", error=str(exc), fallback="template")
+        if not fallback.get("image_url"):
+            from maestro.subagents.marketing.content_creator import generate_image
+
+            fallback["image_url"] = await generate_image(fallback["visual_prompts"][0], settings)
         return fallback
