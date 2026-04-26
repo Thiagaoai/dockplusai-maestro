@@ -6,8 +6,9 @@
   "contact": {
     "phone": "(508) 464-4878",
     "email": "info@robertslandscapecod.com",
+    "reply_to": "roberts.ldc.cape@gmail.com",
     "address": "Cape Cod, MA",
-    "website": "https://robertslandscape.example"
+    "website": "https://robertslandscapecod.com"
   },
   "service_area": ["Falmouth", "Mashpee", "Barnstable", "Sandwich", "Cape Cod"],
   "tone": {
@@ -47,7 +48,8 @@
     "auto_publish_social": false
   },
   "marketing": {
-    "instagram_handle": "@robertslandscape",
+    "instagram_handle": "@thiagaoai",
+    "instagram_account_id": "17841400194457065",
     "posting_frequency_per_week": 5,
     "best_posting_times": ["Tuesday 18:00", "Thursday 18:00"],
     "visual_style": "Real project photos, clean before/after, Cape Cod local proof.",

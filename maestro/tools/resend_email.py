@@ -35,6 +35,10 @@ async def send_email(
 
     log.info("send_email_start", to=mask_email(to), subject=subject, from_address=from_address)
 
+    # Fall back to env var if reply_to not explicit (e.g. RESEND_REPLY_TO_ROBERTS)
+    if not reply_to:
+        reply_to = os.getenv("RESEND_REPLY_TO_ROBERTS") if "roberts" in from_address.lower() else None
+
     payload: dict = {
         "from": from_address,
         "to": [to],
