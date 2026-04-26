@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -e .
 
 # Copy source after deps so code changes don't bust the dep layer
 COPY maestro ./maestro
+COPY scripts ./scripts
 
 # Non-root user — never run as root in prod
 RUN useradd -m -u 1000 maestro && chown -R maestro:maestro /app
