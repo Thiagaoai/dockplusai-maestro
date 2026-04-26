@@ -44,6 +44,8 @@ class AgentRunRecord(BaseModel):
     output: str
     profit_signal: str
     prompt_version: str
+    cost_usd: float | None = None
+    langsmith_trace_url: str | None = None
     human_approved: bool | None = None
     dry_run: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

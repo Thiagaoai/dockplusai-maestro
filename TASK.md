@@ -67,11 +67,13 @@
 - [x] Comando Telegram manual criado: `prospect roberts 10`
 - [x] Fluxos nomeados: `roberts 10` usa lista própria; `roberts web` usa fila de scrape/web
 - [x] Promo Roberts configurada: 10% off para novos clientes, CTA para `https://robertslandscapecod.com`
-- [ ] GHL Roberts token válido direto na API
+- [x] Supabase `clients_web_verified` criado para registrar contatos web verificados enviados
+- [x] Roberts web real validado: approval Telegram → envio Resend → registro `clients_web_verified` → resumo 10/10
+- [x] GHL Roberts token válido direto na API: pipeline lookup OK
 - [ ] Prospectar clientes existentes nos pipelines Roberts ou CSV, excluindo `do_not_contact`
 - [x] Autorizar Google Calendar no Composio
 - [ ] Autorizar HighLevel/GHL no Composio
-- [ ] Conectar Telegram dev bot real (`@maestro_dev_bot`)
+- [x] Conectar Telegram dev bot real (`@maestro_dev_bot`): webhook público validado via ngrok
 - [ ] Conectar GHL sandbox real
 - [ ] Validar fluxo real SDR aprovado: email enviado + calendar criado + GHL consultado, ainda com HITL
 - [ ] Adicionar LangSmith traces reais por agent
@@ -501,10 +503,12 @@
 - [x] **[G]** CSV customer/prospect import como fonte imediata para Roberts, sem depender de token GHL
 - [x] **[G]** `prospect_queue` com `source_type=customer_file|scrape` para alternar fontes
 - [x] **[G]** Batch scheduler 4x/dia para campanha Roberts com aprovação humana antes de envio
+- [ ] **[GT]** B2B outbound (DockPlus AI): prospecting para DockPlus — não iniciado
 - [ ] **[G]** Prospecting Agent híbrido: CSV/customers + GHL pipeline + online scraping/enrichment, sempre com HITL
 - [ ] **[G]** Prospecting Agent + 7 subagents (icp_definer, list_builder, enricher, personalizer, cadence_orchestrator, reply_classifier, deliverability_monitor)
 - [ ] **[G]** Customer Success Agent + 4 subagents
 - [ ] **[G]** Brand Guardian subagent transversal
+- [ ] **[GT]** Dual-run com equipe humana: Bruna (Roberts) e Joana (DockPlus AI) — não iniciado
 - [ ] **[T]** Profiles `all_granite.json` e `cape_codder.json` preenchidos
 
 ---
@@ -518,7 +522,6 @@
 - [ ] **[G]** Sistema de evals semanais automatizados (LangSmith)
 - [ ] **[G]** Feedback 👍/👎 inline em todo output do agente
 - [ ] **[G]** Versionamento automático de prompts (leitura de `prompts/v{N}/`)
-- [ ] **[GT]** Dual-run 30 dias com Bruna (Roberts) e Joana (DockPlus AI)
 - [ ] **[GT]** Release gradual: 25% → 50% → 75% → 100% autônomo
 
 ---

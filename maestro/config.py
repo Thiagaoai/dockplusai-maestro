@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     prompt_version: str = "v1"
     dry_run: bool = True
+    scheduler_enabled: bool = True
 
     webhook_base_url: str = "http://localhost:8000"
 
@@ -46,8 +47,23 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_triage_model: str = "claude-haiku-4-5-20251001"
     openai_api_key: str = ""
-    langchain_api_key: str = ""
-    langchain_project: str = "maestro-dev"
+    langchain_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("LANGCHAIN_API_KEY", "LANGSMITH_API_KEY", "langchain_api_key"),
+    )
+    langchain_project: str = Field(
+        default="maestro-dev",
+        validation_alias=AliasChoices("LANGCHAIN_PROJECT", "LANGSMITH_PROJECT", "langchain_project"),
+    )
+    langsmith_tracing: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "LANGSMITH_TRACING",
+            "LANGSMITH_TRACING_V2",
+            "LANGCHAIN_TRACING_V2",
+            "langsmith_tracing",
+        ),
+    )
 
     apollo_api_key: str = ""
     hunter_api_key: str = ""
@@ -74,6 +90,13 @@ class Settings(BaseSettings):
     thiago_approval_threshold_usd: float = 500.0
 
     prospecting_batch_size_roberts: int = 10
+    weekly_scheduler_timezone: str = "UTC"
+    weekly_cfo_day_of_week: str = "mon"
+    weekly_cfo_hour: int = 7
+    weekly_cmo_day_of_week: str = "mon"
+    weekly_cmo_hour: int = 8
+    weekly_ceo_day_of_week: str = "mon"
+    weekly_ceo_hour: int = 9
     prospecting_schedule_timezone: str = "America/New_York"
     prospecting_schedule_hours_roberts: str = "8,11,15,17"
     prospecting_customer_per_scrape_cycle: int = 2

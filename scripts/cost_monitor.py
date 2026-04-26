@@ -1,16 +1,19 @@
+import asyncio
+import json
+
 from maestro.config import get_settings
+from maestro.repositories import store
+from maestro.services.cost_monitor import evaluate_cost_guard
+
+
+async def _main() -> dict:
+    settings = get_settings()
+    snapshot = await evaluate_cost_guard(settings, store, source="script")
+    return snapshot.model_dump()
 
 
 def main() -> None:
-    settings = get_settings()
-    print(
-        {
-            "status": "dry_run",
-            "daily_alert_usd": settings.daily_cost_alert_usd,
-            "daily_kill_usd": settings.daily_cost_kill_usd,
-            "monthly_kill_usd": settings.monthly_cost_kill_usd,
-        }
-    )
+    print(json.dumps(asyncio.run(_main()), sort_keys=True))
 
 
 if __name__ == "__main__":

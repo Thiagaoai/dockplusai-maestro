@@ -1,4 +1,6 @@
 from maestro.repositories import store
+from maestro.schemas.events import AgentRunRecord
+from maestro.services import cost_monitor
 
 
 def test_fake_ghl_lead_creates_approval_card(client, signed_json):
@@ -104,6 +106,39 @@ def test_stop_blocks_agent_execution(client, signed_json):
     assert response.json()["status"] == "paused"
     assert len(store.leads) == 0
     assert len(store.agent_runs) == 0
+
+
+def test_cost_kill_switch_blocks_graph_before_agent_execution(
+    client, signed_json, monkeypatch
+):
+    monkeypatch.setattr(cost_monitor, "set_stopped", lambda: None)
+    store.agent_runs.append(
+        AgentRunRecord(
+            business="roberts",
+            agent_name="cfo",
+            input="in",
+            output="out",
+            profit_signal="margin",
+            prompt_version="v1",
+            cost_usd=31.0,
+        )
+    )
+    payload = {
+        "eventId": "lead-cost-killed",
+        "contact": {"name": "Cost Guard", "email": "cost@example.com"},
+        "opportunity": {"monetaryValue": 18000},
+    }
+    body, headers = signed_json("roberts-test-secret", payload)
+
+    response = client.post("/webhooks/ghl/roberts", content=body, headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "blocked"
+    assert data["result"]["error"] == "cost_kill_switch_active"
+    assert store.paused is True
+    assert len(store.agent_runs) == 1
+    assert any(record.action == "cost_kill_switch_triggered" for record in store.audit_log)
 
 
 def test_approval_callback_executes_dry_run_once(client, signed_json):

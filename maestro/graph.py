@@ -11,8 +11,9 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
-from maestro.config import Settings
+from maestro.config import Settings, get_settings
 from maestro.graph_nodes import (
+    cost_guard_node,
     execute_node,
     finalize_node,
     hitl_node,
@@ -23,6 +24,7 @@ from maestro.graph_nodes import (
 )
 from maestro.graph_state import MaestroState
 from maestro.repositories.store import InMemoryStore
+from maestro.repositories.supabase_store import SupabaseStore
 from maestro.schemas.events import LeadIn
 from maestro.utils.telegram_commands import parse_prospect_web_command
 
@@ -36,6 +38,7 @@ def _make_checkpointer(settings: Settings) -> BaseCheckpointSaver:
     """Return an appropriate checkpointer for the current environment.
 
     Uses a singleton so that HITL resume finds the same checkpoint data.
+    For production, call setup_checkpointer() at app startup before this.
     """
     global _checkpointer_singleton
     if _checkpointer_singleton is not None:
@@ -46,11 +49,27 @@ def _make_checkpointer(settings: Settings) -> BaseCheckpointSaver:
 
         _checkpointer_singleton = MemorySaver()
     else:
-        from langgraph.checkpoint.redis import RedisSaver
+        from langgraph.checkpoint.redis.aio import AsyncRedisSaver
 
-        _checkpointer_singleton = RedisSaver.from_conn_string(settings.redis_url)
+        # Instantiate only — setup() (creates Redis search indices) is called
+        # explicitly in the FastAPI lifespan via setup_checkpointer().
+        _checkpointer_singleton = AsyncRedisSaver(redis_url=settings.redis_url)
 
     return _checkpointer_singleton
+
+
+async def setup_checkpointer(settings: Settings | None = None) -> None:
+    """Create the Redis checkpointer and initialize its search indices.
+
+    Must be called once at app startup (inside an async context).
+    No-op in test/dev environments where MemorySaver is used.
+    """
+    if settings is None:
+        settings = get_settings()
+    checkpointer = _make_checkpointer(settings)
+    if settings.app_env not in ("test", "dev"):
+        await checkpointer.setup()
+        log.info("redis_checkpointer_ready", redis_url=settings.redis_url)
 
 
 def clear_checkpointer() -> None:
@@ -67,6 +86,12 @@ def _route_after_triage(state: MaestroState) -> str:
     if target == "prospecting":
         return "prospecting"
     return "phase1_agent"
+
+
+def _route_after_cost_guard(state: MaestroState) -> str:
+    if state.get("error") == "cost_kill_switch_active":
+        return "finalize"
+    return "triage"
 
 
 def _route_after_hitl(state: MaestroState) -> str:
@@ -87,7 +112,7 @@ class MaestroGraph:
     def __init__(
         self,
         settings: Settings,
-        store: InMemoryStore,
+        store: InMemoryStore | SupabaseStore,
         checkpointer: BaseCheckpointSaver | None = None,
     ) -> None:
         self.settings = settings
@@ -99,6 +124,7 @@ class MaestroGraph:
         builder = StateGraph(MaestroState)
 
         # Nodes
+        builder.add_node("cost_guard", cost_guard_node)
         builder.add_node("triage", triage_node)
         builder.add_node("sdr", sdr_node)
         builder.add_node("prospecting", prospecting_node)
@@ -108,7 +134,8 @@ class MaestroGraph:
         builder.add_node("finalize", finalize_node)
 
         # Edges
-        builder.add_edge(START, "triage")
+        builder.add_edge(START, "cost_guard")
+        builder.add_conditional_edges("cost_guard", _route_after_cost_guard)
         builder.add_conditional_edges("triage", _route_after_triage)
         builder.add_edge("sdr", "hitl")
         builder.add_edge("prospecting", "hitl")
@@ -159,7 +186,7 @@ class MaestroGraph:
             return response
 
         response = {
-            "status": "completed",
+            "status": "blocked" if result.get("error") == "cost_kill_switch_active" else "completed",
             "event_id": lead_in.event_id,
             "thread_id": thread_id,
             "result": result,
@@ -211,7 +238,7 @@ class MaestroGraph:
             }
 
         return {
-            "status": "completed",
+            "status": "blocked" if result.get("error") == "cost_kill_switch_active" else "completed",
             "thread_id": thread_id,
             "route": result.get("triage_result"),
             "agent": result.get("agent_name"),

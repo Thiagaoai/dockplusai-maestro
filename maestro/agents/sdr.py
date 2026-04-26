@@ -7,6 +7,9 @@ Enrichment waterfall:
 
 from urllib.parse import urlparse
 
+import structlog
+from langsmith import traceable
+
 from maestro.config import Settings
 from maestro.profiles._schema import BusinessProfile
 from maestro.schemas.events import AgentRunRecord, ApprovalRequest, LeadIn, LeadRecord
@@ -14,9 +17,10 @@ from maestro.subagents.sdr import draft_email, qualify_lead, suggest_meeting_slo
 from maestro.tools._enrichment.apollo import enrich_lead
 from maestro.tools._enrichment.hunter import find_email
 
+log = structlog.get_logger()
+
 
 def _domain_from_profile(profile: BusinessProfile) -> str | None:
-    """Extract domain from profile website, if available."""
     website = profile.contact.website if profile.contact else None
     if not website:
         return None
@@ -65,6 +69,8 @@ class SDRAgent:
         # Step 2: Hunter fallback (only if we have name + domain)
         if not lead.email and lead.name:
             domain = _domain_from_profile(self.profile)
+            if not domain and self.profile.contact.email and "@" in self.profile.contact.email:
+                domain = self.profile.contact.email.split("@", 1)[1]
             if domain:
                 parts = lead.name.split(" ", 1)
                 first_name = parts[0]
@@ -120,13 +126,13 @@ class SDRAgent:
             "source": source,
             "apollo_id": person.get("apollo_id"),
             "title": person.get("title"),
-            "company": person.get("company", {}).get("name"),
+            "company": (person.get("company") or {}).get("name"),
         }
 
+    @traceable(name="sdr_prepare_lead", run_type="chain", tags=["agent", "sdr"])
     async def prepare_lead(self, lead_in: LeadIn) -> tuple[LeadRecord, ApprovalRequest, AgentRunRecord]:
         lead = LeadRecord(**lead_in.model_dump())
 
-        # Enrich via Apollo → Hunter waterfall before qualification
         enrichment = await self._maybe_enrich_lead(lead)
 
         qualification = await qualify_lead(lead, self.profile)
@@ -168,5 +174,12 @@ class SDRAgent:
             profit_signal="conversion",
             prompt_version=self.settings.prompt_version,
             dry_run=self.settings.dry_run,
+        )
+        log.info(
+            "sdr_lead_prepared",
+            business=lead.business,
+            score=score,
+            action=qualification.get("recommended_action"),
+            prompt_version=self.settings.prompt_version,
         )
         return lead, approval, run

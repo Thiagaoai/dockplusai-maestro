@@ -20,7 +20,7 @@ class ApifyError(RuntimeError):
 class ApifyProspectFinder:
     """Scrapes Google Maps via Apify's compass/crawler-google-places actor."""
 
-    def __init__(self, settings: Settings, timeout_seconds: int = 120) -> None:
+    def __init__(self, settings: Settings, timeout_seconds: int = 300) -> None:
         self.settings = settings
         self.timeout_seconds = timeout_seconds
 
@@ -47,7 +47,7 @@ class ApifyProspectFinder:
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(ACTOR_RUN_URL, json=run_input, headers=headers)
             if r.status_code >= 400:
                 raise ApifyError(
@@ -96,7 +96,7 @@ class ApifyProspectFinder:
         return f"{terms[0]} {location} MA"
 
     async def _wait_for_run(
-        self, client: httpx.AsyncClient, run_id: str, headers: dict, max_wait: int = 90
+        self, client: httpx.AsyncClient, run_id: str, headers: dict, max_wait: int = 300
     ) -> None:
         url = ACTOR_RUN_STATUS_URL.format(run_id=run_id)
         elapsed = 0

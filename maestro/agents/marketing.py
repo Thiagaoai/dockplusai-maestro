@@ -1,12 +1,12 @@
+import structlog
+from langsmith import traceable
+
 from maestro.config import Settings
 from maestro.profiles._schema import BusinessProfile
 from maestro.schemas.events import AgentResult, AgentRunRecord, ApprovalRequest
-from maestro.subagents.marketing import (
-    choose_hashtags,
-    create_visual_prompts,
-    suggest_post_time,
-    write_caption,
-)
+from maestro.subagents.marketing import choose_hashtags, create_visual_prompts, suggest_post_time, write_caption
+
+log = structlog.get_logger()
 
 
 class MarketingAgent:
@@ -14,17 +14,16 @@ class MarketingAgent:
         self.settings = settings
         self.profile = profile
 
+    @traceable(name="marketing_create_post", run_type="chain", tags=["agent", "marketing"])
     async def create_post(self, topic: str) -> tuple[AgentResult, AgentRunRecord]:
-        visual_prompts = create_visual_prompts(topic, self.profile)
-        caption = write_caption(topic, self.profile)
-        hashtags = choose_hashtags(self.profile)
-        scheduled_at = suggest_post_time(self.profile)
+        post_content = await self._build_post_content(topic)
+
         preview = {
             "topic": topic,
-            "caption": caption,
-            "hashtags": hashtags,
-            "visual_prompts": visual_prompts,
-            "scheduled_at": scheduled_at,
+            "caption": post_content["caption"],
+            "hashtags": post_content["hashtags"],
+            "visual_prompts": post_content["visual_prompts"],
+            "scheduled_at": post_content["scheduled_at"],
             "dry_run": self.settings.dry_run,
             "profit_signal": "demand_generation",
         }
@@ -52,4 +51,16 @@ class MarketingAgent:
             prompt_version=self.settings.prompt_version,
             dry_run=self.settings.dry_run,
         )
+
+        log.info(
+            "marketing_post_drafted",
+            business=self.profile.business_id,
+            topic=topic[:40],
+            prompt_version=self.settings.prompt_version,
+        )
         return result, run
+
+    async def _build_post_content(self, topic: str) -> dict:
+        from maestro.subagents.marketing.caption_writer import create_post_with_llm
+
+        return await create_post_with_llm(topic, self.profile, self.settings)

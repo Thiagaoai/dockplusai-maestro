@@ -22,7 +22,9 @@ from maestro.profiles import load_profile
 from maestro.repositories import store
 from maestro.schemas.events import ApprovalRequest, LeadIn
 from maestro.services.actions import DryRunActionExecutor
+from maestro.services.cost_monitor import evaluate_cost_guard
 from maestro.services.telegram import TelegramService
+from maestro.utils.langsmith import trace_agent_run
 
 log = structlog.get_logger()
 
@@ -31,6 +33,20 @@ def _settings() -> Settings:
     from maestro.config import get_settings
 
     return get_settings()
+
+
+async def cost_guard_node(state: dict[str, Any]) -> dict[str, Any]:
+    """Check cost thresholds before any agent executes."""
+    settings = _settings()
+    snapshot = await evaluate_cost_guard(settings, store, source="graph")
+    if snapshot.should_block:
+        return {
+            "error": "cost_kill_switch_active",
+            "agent_message": "MAESTRO pausado pelo cost monitor.",
+            "cost_guard": snapshot.model_dump(),
+            "done": True,
+        }
+    return {"cost_guard": snapshot.model_dump()}
 
 
 async def triage_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -96,7 +112,24 @@ async def sdr_node(state: dict[str, Any]) -> dict[str, Any]:
     settings = _settings()
     profile = load_profile(business)
     agent = SDRAgent(settings, profile)
-    lead, approval, run = await agent.prepare_lead(lead_in)
+    async with trace_agent_run(
+        settings,
+        name="sdr_run",
+        agent="sdr",
+        business=business,
+        event_id=event_id,
+        inputs=lead_in.model_dump(mode="json"),
+    ) as trace_run:
+        lead, approval, run = await agent.prepare_lead(lead_in)
+        trace_run.end(
+            {
+                "approval_id": approval.id,
+                "lead_id": str(lead.id),
+                "qualification_score": lead.qualification_score,
+                "profit_signal": run.profit_signal,
+            }
+        )
+        run.langsmith_trace_url = trace_run.url
 
     # Persist to InMemoryStore (same as old MaestroOrchestrator)
     await store.upsert_lead(lead)
@@ -139,9 +172,25 @@ async def prospecting_node(state: dict[str, Any]) -> dict[str, Any]:
 
     settings = _settings()
     agent = ProspectingAgent(settings, store)
-    approval, run = await agent.prepare_roberts_batch(
-        batch_size=batch_size, mode=mode
-    )
+    async with trace_agent_run(
+        settings,
+        name="prospecting_run",
+        agent="prospecting",
+        business=business,
+        event_id=state.get("event_id"),
+        inputs={"mode": mode, "batch_size": batch_size},
+    ) as trace_run:
+        approval, run = await agent.prepare_roberts_batch(
+            batch_size=batch_size, mode=mode
+        )
+        trace_run.end(
+            {
+                "approval_id": approval.id if approval else None,
+                "profit_signal": run.profit_signal,
+                "has_approval": approval is not None,
+            }
+        )
+        run.langsmith_trace_url = trace_run.url
 
     if approval:
         await store.create_approval(approval)
@@ -172,16 +221,33 @@ async def phase1_agent_node(state: dict[str, Any]) -> dict[str, Any]:
     settings = _settings()
     profile = load_profile(business)
 
-    if target_agent == "marketing":
-        agent_result, run = await MarketingAgent(settings, profile).create_post(text)
-    elif target_agent == "cfo":
-        agent_result, run = await CFOAgent(settings, profile).run(text)
-    elif target_agent == "cmo":
-        agent_result, run = await CMOAgent(settings, profile).run(text)
-    elif target_agent == "ceo":
-        agent_result, run = await CEOAgent(settings, profile).run(text)
-    else:
-        agent_result, run = await OperationsAgent(settings, profile).prepare_task(text)
+    async with trace_agent_run(
+        settings,
+        name=f"{target_agent}_run",
+        agent=target_agent,
+        business=business,
+        event_id=state.get("event_id"),
+        inputs={"text": text},
+    ) as trace_run:
+        if target_agent == "marketing":
+            agent_result, run = await MarketingAgent(settings, profile).create_post(text)
+        elif target_agent == "cfo":
+            agent_result, run = await CFOAgent(settings, profile).run(text)
+        elif target_agent == "cmo":
+            agent_result, run = await CMOAgent(settings, profile).run(text)
+        elif target_agent == "ceo":
+            agent_result, run = await CEOAgent(settings, profile).run(text)
+        else:
+            agent_result, run = await OperationsAgent(settings, profile).prepare_task(text)
+        trace_run.end(
+            {
+                "agent_name": agent_result.agent_name,
+                "profit_signal": agent_result.profit_signal,
+                "has_approval": agent_result.approval is not None,
+                "status": agent_result.status,
+            }
+        )
+        run.langsmith_trace_url = trace_run.url
 
     await store.add_agent_run(run)
     await store.add_audit_log(

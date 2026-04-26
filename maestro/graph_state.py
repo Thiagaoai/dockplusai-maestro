@@ -23,5 +23,6 @@ class MaestroState(TypedDict, total=False):
     approval: dict[str, Any] | None  # serialized ApprovalRequest
     human_decision: bool | None
     execution_result: dict[str, Any] | None
+    cost_guard: dict[str, Any] | None
     error: str | None
     done: bool

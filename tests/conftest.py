@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 os.environ["APP_ENV"] = "test"
 os.environ["STORAGE_BACKEND"] = "memory"
 os.environ["DRY_RUN"] = "true"
+os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["ANTHROPIC_API_KEY"] = ""
 
 from maestro.config import get_settings
@@ -23,6 +24,7 @@ def reset_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("STORAGE_BACKEND", "memory")
     monkeypatch.setenv("DRY_RUN", "true")
+    monkeypatch.setenv("SCHEDULER_ENABLED", "false")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     monkeypatch.setenv("TELEGRAM_THIAGO_CHAT_ID", "123")
     monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "telegram-test-secret")
