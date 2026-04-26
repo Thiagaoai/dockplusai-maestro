@@ -13,30 +13,21 @@ class ProspectingAgent:
         self.settings = settings
         self.store = store
 
-    async def prepare_roberts_batch(self, batch_size: int | None = None) -> tuple[ApprovalRequest | None, AgentRunRecord]:
+    async def prepare_roberts_batch(
+        self,
+        batch_size: int | None = None,
+        mode: str = "owned",
+    ) -> tuple[ApprovalRequest | None, AgentRunRecord]:
         business = "roberts"
         size = batch_size or self.settings.prospecting_batch_size_roberts
-        owned_target = max(size, self.settings.prospecting_customer_per_scrape_cycle * size)
-        scrape_target = max(size, self.settings.prospecting_scrape_per_cycle * size)
-        owned = await self.store.list_prospect_queue(
-            business, status="queued", limit=owned_target, source_type="customer_file"
-        )
-        scrape = await self.store.list_prospect_queue(
-            business, status="queued", limit=scrape_target, source_type="scrape"
-        )
-        selected = interleave_prospect_sources(
-            owned,
-            scrape,
-            owned_per_cycle=self.settings.prospecting_customer_per_scrape_cycle,
-            scrape_per_cycle=self.settings.prospecting_scrape_per_cycle,
-        )[:size]
+        selected = await self._select_batch(business, size, mode)
 
         if not selected:
             run = AgentRunRecord(
                 business=business,
                 agent_name="prospecting",
-                input="prepare_roberts_batch",
-                output='{"status":"empty"}',
+                input=f"prepare_roberts_batch mode={mode}",
+                output=f'{{"status":"empty","mode":"{mode}"}}',
                 profit_signal="pipeline",
                 prompt_version=self.settings.prompt_version,
                 dry_run=self.settings.dry_run,
@@ -52,6 +43,8 @@ class ProspectingAgent:
         preview = {
             "campaign": {
                 "name": "Roberts 10% New Customer Landscape Promo",
+                "mode": mode,
+                "flow": "roberts web" if mode == "web" else "roberts 10",
                 "business": business,
                 "batch_size": len(selected),
                 "schedule": "08:00, 11:00, 15:00, 17:00 America/New_York",
@@ -78,7 +71,7 @@ class ProspectingAgent:
         run = AgentRunRecord(
             business=business,
             agent_name="prospecting",
-            input=f"prepare batch size={size}",
+            input=f"prepare batch size={size} mode={mode}",
             output=approval.model_dump_json(),
             profit_signal="pipeline",
             prompt_version=self.settings.prompt_version,
@@ -86,6 +79,30 @@ class ProspectingAgent:
         )
         await self.store.update_prospect_queue_status(business, source_refs, "drafted")
         return approval, run
+
+    async def _select_batch(self, business: str, size: int, mode: str) -> list[dict[str, Any]]:
+        if mode == "web":
+            return await self.store.list_prospect_queue(
+                business, status="queued", limit=size, source_type="scrape"
+            )
+        if mode == "hybrid":
+            owned_target = max(size, self.settings.prospecting_customer_per_scrape_cycle * size)
+            scrape_target = max(size, self.settings.prospecting_scrape_per_cycle * size)
+            owned = await self.store.list_prospect_queue(
+                business, status="queued", limit=owned_target, source_type="customer_file"
+            )
+            scrape = await self.store.list_prospect_queue(
+                business, status="queued", limit=scrape_target, source_type="scrape"
+            )
+            return interleave_prospect_sources(
+                owned,
+                scrape,
+                owned_per_cycle=self.settings.prospecting_customer_per_scrape_cycle,
+                scrape_per_cycle=self.settings.prospecting_scrape_per_cycle,
+            )[:size]
+        return await self.store.list_prospect_queue(
+            business, status="queued", limit=size, source_type="customer_file"
+        )
 
     def _prospect_preview(self, item: dict[str, Any]) -> dict[str, Any]:
         payload = item.get("payload") or {}

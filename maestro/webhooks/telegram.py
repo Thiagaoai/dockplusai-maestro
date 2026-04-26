@@ -68,9 +68,17 @@ async def _handle_message(payload: dict, settings: Settings) -> dict:
     elif text.lower().startswith("prospect roberts"):
         parts = text.split()
         batch_size = settings.prospecting_batch_size_roberts
-        if len(parts) >= 3 and parts[2].isdigit():
-            batch_size = int(parts[2])
-        approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(batch_size)
+        mode = "owned"
+        if len(parts) >= 3:
+            if parts[2].isdigit():
+                batch_size = int(parts[2])
+            elif parts[2].lower() in {"web", "scrape"}:
+                mode = "web"
+            elif parts[2].lower() == "hybrid":
+                mode = "hybrid"
+        if len(parts) >= 4 and parts[3].isdigit():
+            batch_size = int(parts[3])
+        approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(batch_size, mode=mode)
         await store.add_agent_run(run)
         if approval:
             await store.create_approval(approval)
@@ -88,9 +96,10 @@ async def _handle_message(payload: dict, settings: Settings) -> dict:
                 "business": "roberts",
                 "approval_id": approval.id,
                 "batch_size": len(approval.preview.get("prospects", [])),
+                "mode": mode,
             }
         else:
-            result = {"status": "empty", "agent": "prospecting", "business": "roberts"}
+            result = {"status": "empty", "agent": "prospecting", "business": "roberts", "mode": mode}
     else:
         graph = MaestroGraph(settings, store)
         result = await graph.handle_text_message(text)

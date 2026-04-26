@@ -218,6 +218,17 @@ class SupabaseStore:
         ).eq("id", approval_id).execute()
         return approval
 
+    async def map_approval_to_thread(self, approval_id: str, thread_id: str) -> None:
+        await self.add_audit_log(
+            event_type="system",
+            action="approval_thread_mapped",
+            payload={"approval_id": approval_id, "thread_id": thread_id},
+            agent="graph",
+        )
+
+    async def get_thread_for_approval(self, approval_id: str) -> str | None:
+        return None
+
     async def _latest_audit_hash(self) -> str | None:
         response = (
             self.client.table("audit_log")

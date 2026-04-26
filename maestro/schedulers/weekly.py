@@ -142,7 +142,7 @@ async def run_roberts_prospecting_batch() -> None:
     try:
         settings = get_settings()
         log.info("cron_roberts_prospecting_batch_start")
-        approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch()
+        approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(mode="owned")
         await store.add_agent_run(run)
         if not approval:
             log.info("cron_roberts_prospecting_batch_empty")

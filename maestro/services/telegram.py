@@ -26,7 +26,7 @@ class TelegramService:
                 ]
             },
         }
-        if self.settings.dry_run or not self.settings.telegram_bot_token:
+        if self.settings.app_env == "test" or not self.settings.telegram_bot_token:
             log.info("telegram_approval_card_dry_run", approval_id=approval_id)
             return {"dry_run": True, "payload": payload}
         url = f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/sendMessage"
@@ -37,7 +37,7 @@ class TelegramService:
 
     async def send_message(self, text: str) -> dict[str, Any]:
         payload = {"chat_id": self.settings.telegram_thiago_chat_id, "text": text}
-        if self.settings.dry_run or not self.settings.telegram_bot_token:
+        if self.settings.app_env == "test" or not self.settings.telegram_bot_token:
             log.info("telegram_message_dry_run", text=text[:80])
             return {"dry_run": True, "payload": payload}
         url = f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/sendMessage"

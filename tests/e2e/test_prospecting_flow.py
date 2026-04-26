@@ -45,13 +45,28 @@ def test_prospect_roberts_command_creates_batch_approval(client):
     assert data["agent"] == "prospecting"
     approval = store.approvals[data["approval_id"]]
     assert approval.action == "prospecting_batch_send_html"
-    assert approval.preview["campaign"]["batch_size"] == 3
+    assert approval.preview["campaign"]["batch_size"] == 2
+    assert approval.preview["campaign"]["flow"] == "roberts 10"
     assert [p["source_type"] for p in approval.preview["prospects"]] == [
         "customer_file",
         "customer_file",
-        "scrape",
     ]
-    assert all(item["status"] == "drafted" for item in store.prospect_queue)
+    assert [item["status"] for item in store.prospect_queue] == ["drafted", "drafted", "queued"]
+
+
+def test_prospect_roberts_web_uses_scrape_queue_only(client):
+    seed_prospect("Owned One", "owned1@example.com", "customer_file", "owned-1")
+    seed_prospect("Scrape One", "scrape1@example.com", "scrape", "scrape-1")
+
+    response = telegram_message(client, "prospect roberts web", 304)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "approval_requested"
+    assert data["mode"] == "web"
+    approval = store.approvals[data["approval_id"]]
+    assert approval.preview["campaign"]["flow"] == "roberts web"
+    assert [p["source_type"] for p in approval.preview["prospects"]] == ["scrape"]
 
 
 def test_prospecting_batch_approval_executes_dry_run(client):

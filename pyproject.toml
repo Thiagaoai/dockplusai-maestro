@@ -26,6 +26,8 @@ dependencies = [
   "langsmith>=0.1.0",
   # Spreadsheets / imports
   "xlrd>=2.0.1",
+  # Web scraping
+  "beautifulsoup4>=4.12.0",
   # Database / State
   "supabase>=2.0.0",
   "psycopg[binary]>=3.2.0",

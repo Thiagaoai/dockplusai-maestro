@@ -4,6 +4,10 @@ import sys
 import structlog
 
 
+def get_logger(name: str | None = None):
+    return structlog.get_logger(name)
+
+
 def configure_logging(level: str = "INFO") -> None:
     logging.basicConfig(
         format="%(message)s",

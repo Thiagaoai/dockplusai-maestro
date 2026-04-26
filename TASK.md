@@ -65,6 +65,7 @@
 - [x] Scheduler Roberts prospecting configurado: 08:00, 11:00, 15:00, 17:00 America/New_York
 - [x] Intercalação configurada: 2 `customer_file` para 1 `scrape` quando houver scrape queued
 - [x] Comando Telegram manual criado: `prospect roberts 10`
+- [x] Fluxos nomeados: `roberts 10` usa lista própria; `roberts web` usa fila de scrape/web
 - [x] Promo Roberts configurada: 10% off para novos clientes, CTA para `https://robertslandscapecod.com`
 - [ ] GHL Roberts token válido direto na API
 - [ ] Prospectar clientes existentes nos pipelines Roberts ou CSV, excluindo `do_not_contact`
