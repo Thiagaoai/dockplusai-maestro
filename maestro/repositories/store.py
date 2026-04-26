@@ -81,6 +81,37 @@ class InMemoryStore:
         self.prospect_queue.append(item)
         return item
 
+    async def list_prospect_queue(
+        self,
+        business: str,
+        status: str = "queued",
+        limit: int = 10,
+        source_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        rows = [
+            item
+            for item in self.prospect_queue
+            if item.get("business") == business
+            and item.get("status") == status
+            and (source_type is None or item.get("source_type") == source_type)
+        ]
+        rows.sort(key=lambda item: (-int(item.get("priority", 0)), item.get("created_at", "")))
+        return rows[:limit]
+
+    async def update_prospect_queue_status(
+        self,
+        business: str,
+        source_refs: list[str],
+        status: str,
+    ) -> int:
+        updated = 0
+        refs = set(source_refs)
+        for item in self.prospect_queue:
+            if item.get("business") == business and item.get("source_ref") in refs:
+                item["status"] = status
+                updated += 1
+        return updated
+
     async def add_audit_log(
         self,
         event_type: str,

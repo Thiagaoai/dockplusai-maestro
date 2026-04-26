@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
+from maestro.agents.prospecting import ProspectingAgent
 from maestro.config import Settings, get_settings
 from maestro.graph import MaestroGraph
 from maestro.memory.redis_session import clear_stopped, set_stopped
@@ -64,6 +65,32 @@ async def _handle_message(payload: dict, settings: Settings) -> dict:
         )
         await telegram.send_message("🟢 MAESTRO retomado. Todos os agentes ativos.")
         result = {"status": "resumed"}
+    elif text.lower().startswith("prospect roberts"):
+        parts = text.split()
+        batch_size = settings.prospecting_batch_size_roberts
+        if len(parts) >= 3 and parts[2].isdigit():
+            batch_size = int(parts[2])
+        approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(batch_size)
+        await store.add_agent_run(run)
+        if approval:
+            await store.create_approval(approval)
+            await store.add_audit_log(
+                event_type="agent_decision",
+                business="roberts",
+                agent="prospecting",
+                action="approval_requested",
+                payload={"approval_id": approval.id, "batch_size": len(approval.preview.get("prospects", []))},
+            )
+            await telegram.send_approval_card(approval.id, approval.preview)
+            result = {
+                "status": "approval_requested",
+                "agent": "prospecting",
+                "business": "roberts",
+                "approval_id": approval.id,
+                "batch_size": len(approval.preview.get("prospects", [])),
+            }
+        else:
+            result = {"status": "empty", "agent": "prospecting", "business": "roberts"}
     else:
         graph = MaestroGraph(settings, store)
         result = await graph.handle_text_message(text)

@@ -57,6 +57,15 @@
 - [x] Composio HighLevel verificado: sem active connection no CLI/workspace atual
 - [x] Roberts `do_not_contact` hard block criado: Kim Williams nunca entra em prospecting/follow-up/SDR
 - [x] Importador CSV de clientes/prospects Roberts criado com dedupe e bloqueio `do_not_contact`
+- [x] Supabase `prospect_queue` criado para intercalar fontes `customer_file` e `scrape`
+- [x] Lista `Clients (1).csv` importada para Roberts: 1.130 válidos no arquivo, 1 Kim Williams excluída
+- [x] Lista `Customers.xls` importada para Roberts: 1.484 válidos no arquivo
+- [x] Base Roberts consolidada no Supabase: 2.574 leads/prospects importados e 2.574 itens queued
+- [x] Prospecting batch Roberts criado: 10 pessoas por lote, approval Telegram, HTML email via Resend
+- [x] Scheduler Roberts prospecting configurado: 08:00, 11:00, 15:00, 17:00 America/New_York
+- [x] Intercalação configurada: 2 `customer_file` para 1 `scrape` quando houver scrape queued
+- [x] Comando Telegram manual criado: `prospect roberts 10`
+- [x] Promo Roberts configurada: 10% off para novos clientes, CTA para `https://robertslandscapecod.com`
 - [ ] GHL Roberts token válido direto na API
 - [ ] Prospectar clientes existentes nos pipelines Roberts ou CSV, excluindo `do_not_contact`
 - [x] Autorizar Google Calendar no Composio
@@ -489,6 +498,8 @@
 - [ ] **[G]** `maestro/tools/_enrichment/hunter.py` — verificação de emails
 - [ ] **[G]** `maestro/tools/_enrichment/maps.py` — Google Maps Places API
 - [x] **[G]** CSV customer/prospect import como fonte imediata para Roberts, sem depender de token GHL
+- [x] **[G]** `prospect_queue` com `source_type=customer_file|scrape` para alternar fontes
+- [x] **[G]** Batch scheduler 4x/dia para campanha Roberts com aprovação humana antes de envio
 - [ ] **[G]** Prospecting Agent híbrido: CSV/customers + GHL pipeline + online scraping/enrichment, sempre com HITL
 - [ ] **[G]** Prospecting Agent + 7 subagents (icp_definer, list_builder, enricher, personalizer, cadence_orchestrator, reply_classifier, deliverability_monitor)
 - [ ] **[G]** Customer Success Agent + 4 subagents

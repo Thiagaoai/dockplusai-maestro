@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     monthly_cost_kill_usd: float = 500.0
     thiago_approval_threshold_usd: float = 500.0
 
+    prospecting_batch_size_roberts: int = 10
+    prospecting_schedule_timezone: str = "America/New_York"
+    prospecting_schedule_hours_roberts: str = "8,11,15,17"
+    prospecting_customer_per_scrape_cycle: int = 2
+    prospecting_scrape_per_cycle: int = 1
+    roberts_promo_discount_percent: int = 10
+    roberts_website_url: str = "https://robertslandscapecod.com"
+
     storage_backend: Literal["memory", "supabase"] = "memory"
 
     profile_dir: str = Field(default="maestro/profiles")

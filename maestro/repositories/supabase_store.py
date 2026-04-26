@@ -113,6 +113,45 @@ class SupabaseStore:
         ).execute()
         return item
 
+    async def list_prospect_queue(
+        self,
+        business: str,
+        status: str = "queued",
+        limit: int = 10,
+        source_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query = (
+            self.client.table("prospect_queue")
+            .select("*")
+            .eq("business", business)
+            .eq("status", status)
+            .order("priority", desc=True)
+            .order("created_at", desc=False)
+            .limit(limit)
+        )
+        if source_type:
+            query = query.eq("source_type", source_type)
+        response = query.execute()
+        return getattr(response, "data", None) or []
+
+    async def update_prospect_queue_status(
+        self,
+        business: str,
+        source_refs: list[str],
+        status: str,
+    ) -> int:
+        updated = 0
+        for source_ref in source_refs:
+            response = (
+                self.client.table("prospect_queue")
+                .update({"status": status, "updated_at": datetime.now(UTC).isoformat()})
+                .eq("business", business)
+                .eq("source_ref", source_ref)
+                .execute()
+            )
+            updated += len(getattr(response, "data", None) or [])
+        return updated
+
     async def add_audit_log(
         self,
         event_type: str,

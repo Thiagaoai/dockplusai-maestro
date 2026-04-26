@@ -47,6 +47,26 @@ class TelegramService:
             return response.json()
 
     def _format_approval_text(self, preview: dict[str, Any]) -> str:
+        if "campaign" in preview:
+            campaign = preview["campaign"]
+            email = preview.get("email", {})
+            prospects = preview.get("prospects", [])
+            source_counts: dict[str, int] = {}
+            for prospect in prospects:
+                source = prospect.get("source_type", "unknown")
+                source_counts[source] = source_counts.get(source, 0) + 1
+            sample_names = [p.get("name") or "Unknown" for p in prospects[:5]]
+            return (
+                "Prospecting batch approval\n\n"
+                f"Campaign: {campaign.get('name')}\n"
+                f"Offer: {campaign.get('offer')}\n"
+                f"Batch size: {campaign.get('batch_size')}\n"
+                f"Sources: {source_counts}\n"
+                f"Subject: {email.get('subject')}\n"
+                f"CTA: {campaign.get('cta_url')}\n"
+                f"Sample: {', '.join(sample_names)}\n\n"
+                f"Dry run: {preview.get('dry_run', True)}"
+            )
         if "lead" not in preview:
             title = preview.get("topic") or preview.get("task") or preview.get("request") or "Action"
             signal = preview.get("profit_signal", "growth")

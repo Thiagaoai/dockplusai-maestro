@@ -53,6 +53,10 @@ class DryRunActionExecutor:
             if self.settings.dry_run or not self.settings.composio_enabled:
                 return await self.execute_sdr_approval(approval)
             return await self.execute_real_sdr_approval(approval)
+        if approval.action == "prospecting_batch_send_html":
+            if self.settings.dry_run:
+                return await self.execute_prospecting_batch_dry_run(approval)
+            return await self.execute_prospecting_batch(approval)
         result = {
             "action": approval.action,
             "approval_id": approval.id,
@@ -68,6 +72,88 @@ class DryRunActionExecutor:
             business=approval.business,
             agent=approval.action.split("_", 1)[0],
             action=f"dry_run_{approval.action}",
+            payload=result,
+        )
+        return result
+
+    async def execute_prospecting_batch_dry_run(self, approval: ApprovalRequest) -> dict[str, Any]:
+        source_refs = approval.preview.get("source_refs", [])
+        result = {
+            "action": approval.action,
+            "approval_id": approval.id,
+            "business": approval.business,
+            "dry_run": True,
+            "would_send_count": len(approval.preview.get("prospects", [])),
+            "subject": approval.preview.get("email", {}).get("subject"),
+            "source_refs": source_refs,
+        }
+        if hasattr(self.store, "dry_run_actions"):
+            self.store.dry_run_actions.append(result)
+        await self.store.add_audit_log(
+            event_type="tool_call",
+            business=approval.business,
+            agent="prospecting",
+            action="dry_run_prospecting_batch_send_html",
+            payload=result,
+        )
+        return result
+
+    async def execute_prospecting_batch(self, approval: ApprovalRequest) -> dict[str, Any]:
+        profile = load_profile(approval.business)
+        email = approval.preview.get("email", {})
+        sent: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        sent_refs: list[str] = []
+
+        for prospect in approval.preview.get("prospects", []):
+            source_ref = prospect.get("source_ref")
+            lead_id = prospect.get("lead_id")
+            lead = await self.store.get_lead(lead_id) if lead_id else None
+            if not lead:
+                skipped.append({"source_ref": source_ref, "reason": "lead_not_found"})
+                continue
+            lead_data = lead.model_dump(mode="json")
+            excluded = find_do_not_contact_match(lead_data, profile)
+            if excluded:
+                skipped.append({"source_ref": source_ref, "reason": "do_not_contact"})
+                continue
+            if not lead.email:
+                skipped.append({"source_ref": source_ref, "reason": "missing_email"})
+                continue
+
+            result = await self.email.send_business_email(
+                business=approval.business,
+                to=lead.email,
+                subject=email.get("subject", "Roberts Landscape offer"),
+                body=email.get("text", ""),
+                html=email.get("html"),
+                idempotency_key=f"prospecting:{approval.id}:{source_ref}",
+            )
+            sent.append({"source_ref": source_ref, "email_id": result.get("email_id")})
+            sent_refs.append(source_ref)
+
+        if sent_refs and hasattr(self.store, "update_prospect_queue_status"):
+            await self.store.update_prospect_queue_status(approval.business, sent_refs, "sent")
+        skipped_refs = [item["source_ref"] for item in skipped if item.get("source_ref")]
+        if skipped_refs and hasattr(self.store, "update_prospect_queue_status"):
+            await self.store.update_prospect_queue_status(approval.business, skipped_refs, "skipped")
+
+        result = {
+            "action": approval.action,
+            "approval_id": approval.id,
+            "business": approval.business,
+            "dry_run": False,
+            "status": "executed",
+            "sent_count": len(sent),
+            "skipped_count": len(skipped),
+            "sent": sent,
+            "skipped": skipped,
+        }
+        await self.store.add_audit_log(
+            event_type="tool_call",
+            business=approval.business,
+            agent="prospecting",
+            action="prospecting_batch_send_html",
             payload=result,
         )
         return result

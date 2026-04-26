@@ -18,10 +18,12 @@ from apscheduler.triggers.cron import CronTrigger
 from maestro.agents.ceo import CEOAgent
 from maestro.agents.cfo import CFOAgent
 from maestro.agents.cmo import CMOAgent
+from maestro.agents.prospecting import ProspectingAgent
 from maestro.config import get_settings
 from maestro.memory.redis_session import acquire_cron_lock, is_stopped, release_cron_lock
 from maestro.profiles import load_profile
 from maestro.repositories import store
+from maestro.services.telegram import TelegramService
 
 log = structlog.get_logger()
 
@@ -131,6 +133,36 @@ async def run_cost_monitor() -> None:
         release_cron_lock("cost_monitor")
 
 
+async def run_roberts_prospecting_batch() -> None:
+    if is_stopped():
+        log.info("cron_skipped_stopped", job="roberts_prospecting_batch")
+        return
+    if not acquire_cron_lock("roberts_prospecting_batch", timeout=50):
+        return
+    try:
+        settings = get_settings()
+        log.info("cron_roberts_prospecting_batch_start")
+        approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch()
+        await store.add_agent_run(run)
+        if not approval:
+            log.info("cron_roberts_prospecting_batch_empty")
+            return
+        await store.create_approval(approval)
+        await store.add_audit_log(
+            event_type="agent_decision",
+            business="roberts",
+            agent="prospecting",
+            action="approval_requested",
+            payload={"approval_id": approval.id, "batch_size": len(approval.preview.get("prospects", []))},
+        )
+        await TelegramService(settings).send_approval_card(approval.id, approval.preview)
+        log.info("cron_roberts_prospecting_batch_approval_sent", approval_id=approval.id)
+    except Exception as exc:
+        log.error("cron_roberts_prospecting_batch_error", error=str(exc))
+    finally:
+        release_cron_lock("roberts_prospecting_batch")
+
+
 # ── scheduler setup ───────────────────────────────────────────────────────────
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -142,6 +174,19 @@ def setup_scheduler() -> AsyncIOScheduler:
 
     # Hourly cost monitor
     scheduler.add_job(run_cost_monitor, CronTrigger(minute=0, timezone="UTC"), id="cost_monitor")
+
+    settings = get_settings()
+    hours = [
+        int(hour.strip())
+        for hour in settings.prospecting_schedule_hours_roberts.split(",")
+        if hour.strip()
+    ]
+    for hour in hours:
+        scheduler.add_job(
+            run_roberts_prospecting_batch,
+            CronTrigger(hour=hour, minute=0, timezone=settings.prospecting_schedule_timezone),
+            id=f"roberts_prospecting_{hour:02d}00",
+        )
 
     log.info("scheduler_jobs_registered", job_count=len(scheduler.get_jobs()))
     return scheduler
