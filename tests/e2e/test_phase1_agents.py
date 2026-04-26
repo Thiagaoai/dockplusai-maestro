@@ -24,43 +24,50 @@ def test_marketing_agent_creates_approval_from_telegram(client):
     assert len(approval.preview["hashtags"]) >= 8
 
 
-def test_cfo_agent_answers_with_sources_from_telegram(client):
+def test_cfo_agent_recommends_actions_with_conditional_approval(client):
     response = telegram_message(client, "cfo what is margin this month", 102)
 
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "completed"
+    # Roberts has avg_ticket=20000, margin analysis triggers actions > $500 threshold
+    assert data["status"] == "approval_requested"
     assert data["agent"] == "cfo"
     assert data["profit_signal"] == "margin"
-    assert len(store.agent_runs) == 1
-    assert "Sources" in data["telegram"]["payload"]["text"] or data["telegram"]["dry_run"] is True
-    assert store.business_metrics[0]["metric_type"] == "cfo"
-    assert store.business_metrics[0]["metric_data"]["sources"]
+    assert data["approval_id"] in store.approvals
+    approval = store.approvals[data["approval_id"]]
+    assert approval.action == "cfo_financial_actions_dry_run"
+    assert "actions" in approval.preview
+    assert len(approval.preview["actions"]) > 0
 
 
-def test_cmo_agent_prepares_budget_approval(client):
+def test_cmo_agent_skips_approval_when_below_threshold(client):
     response = telegram_message(client, "cmo ads roas campaign review", 103)
 
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "approval_requested"
+    # Roberts budget=$3000, 10% shift=$300, below $500 threshold → no approval
+    assert data["status"] == "completed"
     assert data["agent"] == "cmo"
     assert data["profit_signal"] == "roas"
-    approval = store.approvals[data["approval_id"]]
-    assert approval.action == "cmo_budget_test_dry_run"
-    assert approval.preview["creative_tests"]
+    # No approval created, but agent run and business metric are recorded
+    assert len(store.agent_runs) == 1
+    assert store.agent_runs[0].agent_name == "cmo"
 
 
-def test_ceo_agent_generates_briefing(client):
+def test_ceo_agent_generates_briefing_with_strategic_approval(client):
     response = telegram_message(client, "ceo weekly briefing and decisions", 104)
 
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "completed"
+    # CEO decisions have estimated_impact_usd > $500 threshold (avg_ticket * 0.05 = 1000)
+    assert data["status"] == "approval_requested"
     assert data["agent"] == "ceo"
     assert data["profit_signal"] == "decision_quality"
-    assert "weekly briefing" in data["message"].lower()
-    assert store.business_metrics[0]["metric_type"] == "ceo"
+    assert data["approval_id"] in store.approvals
+    approval = store.approvals[data["approval_id"]]
+    assert approval.action == "ceo_strategic_decisions_dry_run"
+    assert "decisions" in approval.preview
+    assert "briefing_summary" in approval.preview
 
 
 def test_operations_agent_requires_approval_for_external_action(client):

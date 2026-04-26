@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from maestro.schemas.events import (
@@ -25,6 +25,7 @@ class InMemoryStore:
         self.business_metrics: list[dict[str, Any]] = []
         self.paused: bool = False
         self.dry_run_actions: list[dict[str, Any]] = []
+        self.approval_threads: dict[str, str] = {}  # approval_id -> thread_id
 
     def reset(self) -> None:
         self.__init__()
@@ -116,8 +117,14 @@ class InMemoryStore:
         if approval.status != ApprovalStatus.pending:
             return approval
         approval.status = ApprovalStatus.approved if approved else ApprovalStatus.rejected
-        approval.decided_at = datetime.now(timezone.utc)
+        approval.decided_at = datetime.now(UTC)
         return approval
+
+    async def map_approval_to_thread(self, approval_id: str, thread_id: str) -> None:
+        self.approval_threads[approval_id] = thread_id
+
+    async def get_thread_for_approval(self, approval_id: str) -> str | None:
+        return self.approval_threads.get(approval_id)
 
 
 store = InMemoryStore()

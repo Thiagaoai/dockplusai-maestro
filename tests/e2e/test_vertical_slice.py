@@ -47,6 +47,26 @@ def test_duplicate_ghl_webhook_does_not_duplicate_records(client, signed_json):
     assert len(store.approvals) == 1
 
 
+def test_roberts_do_not_contact_is_excluded_before_agent_execution(client, signed_json):
+    payload = {
+        "eventId": "lead-kim-williams",
+        "contact": {"name": "Kim Williams", "email": "kim@example.com", "phone": "508-555-0199"},
+        "opportunity": {"monetaryValue": 25000},
+    }
+    body, headers = signed_json("roberts-test-secret", payload)
+
+    response = client.post("/webhooks/ghl/roberts", content=body, headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "excluded_contact"
+    assert len(store.leads) == 0
+    assert len(store.agent_runs) == 0
+    assert len(store.approvals) == 0
+    assert store.audit_log[0].action == "skipped_do_not_contact"
+    assert "lead-kim-williams" in store.processed_events
+
+
 def test_invalid_ghl_hmac_is_rejected(client):
     response = client.post(
         "/webhooks/ghl/roberts",

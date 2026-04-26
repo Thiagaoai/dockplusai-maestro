@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from maestro.config import Settings, get_settings
-from maestro.graph import MaestroOrchestrator
-from maestro.memory.redis_session import clear_stopped, is_stopped, set_stopped
+from maestro.graph import MaestroGraph
+from maestro.memory.redis_session import clear_stopped, set_stopped
 from maestro.repositories import store
 from maestro.schemas.events import ApprovalStatus
 from maestro.services import DryRunActionExecutor, TelegramService
@@ -65,8 +65,8 @@ async def _handle_message(payload: dict, settings: Settings) -> dict:
         await telegram.send_message("🟢 MAESTRO retomado. Todos os agentes ativos.")
         result = {"status": "resumed"}
     else:
-        orchestrator = MaestroOrchestrator(settings, store)
-        result = await orchestrator.handle_text_message(text)
+        graph = MaestroGraph(settings, store)
+        result = await graph.handle_text_message(text)
 
     if update_id:
         await store.mark_processed(f"telegram:{update_id}", "telegram", result)
@@ -84,8 +84,8 @@ async def _handle_callback(payload: dict, settings: Settings) -> dict:
     parts = data.split(":")
     if len(parts) != 3 or parts[0] != "approval":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_callback")
-    decision, approval_id = parts[1], parts[2]
-    if decision not in {"approve", "reject"}:
+    decision_str, approval_id = parts[1], parts[2]
+    if decision_str not in {"approve", "reject"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_decision")
 
     approval = await store.get_approval(approval_id)
@@ -96,20 +96,37 @@ async def _handle_callback(payload: dict, settings: Settings) -> dict:
         await store.mark_processed(event_key, "telegram", result, business=approval.business)
         return result
 
-    approved = decision == "approve"
-    approval = await store.decide_approval(approval_id, approved)
-    await store.add_audit_log(
-        event_type="human_approval",
-        business=approval.business if approval else None,
-        agent="sdr",
-        action="approved" if approved else "rejected",
-        payload={"approval_id": approval_id, "callback_id": callback_id},
+    thread_id = await store.get_thread_for_approval(approval_id)
+    if not thread_id:
+        # Fallback for approvals created before graph migration
+        approved = decision_str == "approve"
+        approval = await store.decide_approval(approval_id, approved)
+        await store.add_audit_log(
+            event_type="human_approval",
+            business=approval.business if approval else None,
+            agent="sdr",
+            action="approved" if approved else "rejected",
+            payload={"approval_id": approval_id, "callback_id": callback_id},
+        )
+        if approved and approval:
+            executor = DryRunActionExecutor(store)
+            action_result = await executor.execute_approval(approval)
+            result = {"status": "approved", "action": action_result}
+        else:
+            result = {"status": "rejected"}
+        await store.mark_processed(event_key, "telegram", result, business=approval.business if approval else None)
+        return result
+
+    approved = decision_str == "approve"
+    await store.decide_approval(approval_id, approved)
+    graph = MaestroGraph(settings, store)
+    result = await graph.resume(thread_id, approved)
+
+    telegram = TelegramService(settings)
+    status_text = "approved" if approved else "rejected"
+    await telegram.send_message(f"✅ Ação {status_text} e executada." if approved else f"❌ Ação {status_text}.")
+
+    await store.mark_processed(
+        event_key, "telegram", {"status": status_text, "graph_result": result}, business=approval.business
     )
-    if approved and approval:
-        executor = DryRunActionExecutor(store)
-        action_result = await executor.execute_approval(approval)
-        result = {"status": "approved", "action": action_result}
-    else:
-        result = {"status": "rejected"}
-    await store.mark_processed(event_key, "telegram", result, business=approval.business if approval else None)
-    return result
+    return {"status": status_text, "graph_result": result}

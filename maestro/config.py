@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str = "dev-telegram-secret"
     telegram_thiago_chat_id: int = 0
 
+    ghl_token_roberts: str = ""
+    ghl_token_dockplusai: str = ""
     ghl_webhook_secret_roberts: str = "dev-roberts-secret"
     ghl_webhook_secret_dockplusai: str = "dev-dockplusai-secret"
 
@@ -27,10 +29,24 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""
     redis_url: str = "redis://localhost:6379/0"
 
+    resend_api_key: str = ""
+    resend_from_roberts: str = "Roberts Landscape <info@robertslandscapecod.com>"
+    resend_reply_to_roberts: str = "roberts.ldc.cape@gmail.com"
+    resend_from_dockplusai: str = "DockPlus AI <hello@dockplusai.com>"
+    resend_reply_to_dockplusai: str = ""
+
+    composio_cli_path: str = "~/.composio/composio"
+    composio_enabled: bool = True
+    ghl_location_id_roberts: str = ""
+    ghl_location_id_dockplusai: str = ""
+
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     langchain_api_key: str = ""
     langchain_project: str = "maestro-dev"
+
+    apollo_api_key: str = ""
+    hunter_api_key: str = ""
 
     daily_cost_alert_usd: float = 15.0
     daily_cost_kill_usd: float = 30.0
@@ -46,6 +62,34 @@ class Settings(BaseSettings):
             return self.ghl_webhook_secret_roberts
         if business == "dockplusai":
             return self.ghl_webhook_secret_dockplusai
+        return ""
+
+    def ghl_location_for_business(self, business: str) -> str:
+        if business == "roberts":
+            return self.ghl_location_id_roberts
+        if business == "dockplusai":
+            return self.ghl_location_id_dockplusai
+        return ""
+
+    def ghl_token_for_business(self, business: str) -> str:
+        if business == "roberts":
+            return self.ghl_token_roberts
+        if business == "dockplusai":
+            return self.ghl_token_dockplusai
+        return ""
+
+    def resend_from_for_business(self, business: str) -> str:
+        if business == "roberts":
+            return self.resend_from_roberts
+        if business == "dockplusai":
+            return self.resend_from_dockplusai
+        return self.resend_from_dockplusai or self.resend_from_roberts
+
+    def resend_reply_to_for_business(self, business: str) -> str:
+        if business == "roberts":
+            return self.resend_reply_to_roberts
+        if business == "dockplusai":
+            return self.resend_reply_to_dockplusai
         return ""
 
 

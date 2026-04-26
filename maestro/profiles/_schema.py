@@ -73,6 +73,14 @@ class Team(BaseModel):
     primary_humans: list[TeamMember] = Field(default_factory=list)
 
 
+class DoNotContactEntry(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    reason: str
+    source: str = "manual"
+
+
 class BusinessProfile(BaseModel):
     business_id: str
     business_name: str
@@ -87,5 +95,6 @@ class BusinessProfile(BaseModel):
     marketing: Marketing
     ads: Ads = Field(default_factory=Ads)
     brand_rules: BrandRules = Field(default_factory=BrandRules)
+    do_not_contact: list[DoNotContactEntry] = Field(default_factory=list)
     icp: dict | None = None
     team: Team = Field(default_factory=Team)

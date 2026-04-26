@@ -26,7 +26,9 @@ dependencies = [
   "langsmith>=0.1.0",
   # Database / State
   "supabase>=2.0.0",
+  "psycopg[binary]>=3.2.0",
   "redis[hiredis]>=5.0.0",
+  "langgraph-checkpoint-redis>=0.4.0",
   # Scheduler
   "apscheduler>=3.10.0",
   # AI APIs

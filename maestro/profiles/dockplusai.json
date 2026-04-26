@@ -34,6 +34,18 @@
       "conversion_rate": 0.3
     }
   ],
+  "ghl": {
+    "location_id": "ndn7HT1fjSZlC3qcsOlu",
+    "leads_pipeline_id": "U9WUrJSwziyPlg3JdR0G",
+    "pipeline_stages": {
+      "new_lead": "a33f975c-7cc3-4362-beec-0d2bfc864fb3",
+      "hot_lead": "37d12952-07b4-4a22-bb7b-03f649340ccc",
+      "new_booking": "fb2194b3-9039-471f-ab42-2ed741b76656",
+      "visit_attended": "720fe610-ea06-4066-baa8-1c35d20f6a88",
+      "sale": "9c0fcbb4-c547-470d-8919-0fe4b89f4464",
+      "left_review": "ea308072-cdc1-4bea-a0bf-b1a5660d3594"
+    }
+  },
   "qualification_criteria": {
     "min_ticket_usd": 5000,
     "in_service_area_required": false,

@@ -35,6 +35,20 @@
       "conversion_rate": 0.18
     }
   ],
+  "ghl": {
+    "location_id": "N9tnZRLBB1FzcnL8Nf6c",
+    "leads_pipeline_id": "n0Fsi2qAcXh9bkiudqPy",
+    "pipeline_stages": {
+      "new_lead": "72df40f9-f564-4813-a79f-09ff08200060",
+      "contacted": "f630ce9d-8575-4e27-86fe-22396cc5d25c",
+      "call_booked": "cf59aaed-9053-4959-bf62-03bd2fec4453",
+      "missed_appointment": "4e505da8-ef20-48f5-ab20-c4187c30b94a",
+      "attended_follow_up": "6929b315-f260-4319-98ea-4f598869daa9",
+      "sent_contract": "81e5e60b-d6c5-40e2-beb2-b94c92ed5aa1",
+      "closed": "7ad58f1a-0f2b-447b-8dbf-b933fae882d6",
+      "ghosted": "26ddde3d-0f43-4877-9fd4-a410ab6e21f2"
+    }
+  },
   "qualification_criteria": {
     "min_ticket_usd": 5000,
     "in_service_area_required": true,
@@ -48,8 +62,10 @@
     "auto_publish_social": false
   },
   "marketing": {
-    "instagram_handle": "@thiagaoai",
-    "instagram_account_id": "17841400194457065",
+    "instagram_handle": "@roberts_ldc",
+    "instagram_account_id": "17841411993241452",
+    "linkedin_user_id": "rWNj7P2xeQ",
+    "facebook_page_id": "559472230758486",
     "posting_frequency_per_week": 5,
     "best_posting_times": ["Tuesday 18:00", "Thursday 18:00"],
     "visual_style": "Real project photos, clean before/after, Cape Cod local proof.",
@@ -69,6 +85,13 @@
     "required_disclaimers": ["Final pricing requires project review."],
     "competitor_mentions_allowed": false
   },
+  "do_not_contact": [
+    {
+      "name": "Kim Williams",
+      "reason": "Excluded by Thiago. Never prospect, follow up, email, schedule, or move this contact in Roberts flows.",
+      "source": "manual"
+    }
+  ],
   "team": {
     "primary_humans": [
       {"name": "Thiago", "role": "owner"},

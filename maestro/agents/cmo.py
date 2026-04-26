@@ -15,7 +15,8 @@ class CMOAgent:
 
     async def run(self, request: str = "weekly marketing briefing") -> tuple[AgentResult, AgentRunRecord]:
         performance = analyze_ad_performance(self.profile)
-        budget = recommend_budget_actions(self.profile.ads.monthly_budget_usd)
+        threshold = self.profile.decision_thresholds.thiago_approval_above_usd
+        budget = recommend_budget_actions(self.profile.ads.monthly_budget_usd, threshold)
         creative_tests = suggest_creative_tests(self.profile.business_name)
         data = {
             "request": request,
@@ -29,7 +30,14 @@ class CMOAgent:
                 business=self.profile.business_id,
                 event_id=f"cmo:{self.profile.business_id}:budget",
                 action="cmo_budget_test_dry_run",
-                preview=data,
+                preview={
+                    "budget": budget,
+                    "performance": performance,
+                    "creative_tests": creative_tests,
+                    "threshold_usd": threshold,
+                    "dry_run": self.settings.dry_run,
+                    "profit_signal": "roas",
+                },
             )
         result = AgentResult(
             business=self.profile.business_id,
