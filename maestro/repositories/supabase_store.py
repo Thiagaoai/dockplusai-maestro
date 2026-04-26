@@ -95,6 +95,18 @@ class SupabaseStore:
         rows = getattr(response, "data", None) or []
         return LeadRecord.model_validate(rows[0]) if rows else None
 
+    async def get_lead_by_email(self, email: str) -> LeadRecord | None:
+        response = (
+            self.client.table("leads")
+            .select("*")
+            .eq("email", email.casefold())
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(response, "data", None) or []
+        return LeadRecord.model_validate(rows[0]) if rows else None
+
     async def add_agent_run(self, run: AgentRunRecord) -> AgentRunRecord:
         self.client.table("agent_runs").insert(run.model_dump(mode="json")).execute()
         return run

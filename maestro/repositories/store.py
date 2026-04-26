@@ -63,6 +63,13 @@ class InMemoryStore:
     async def get_lead(self, lead_id: str) -> LeadRecord | None:
         return self.leads.get(lead_id)
 
+    async def get_lead_by_email(self, email: str) -> LeadRecord | None:
+        email_lower = email.casefold()
+        for lead in self.leads.values():
+            if (lead.email or "").casefold() == email_lower:
+                return lead
+        return None
+
     async def add_agent_run(self, run: AgentRunRecord) -> AgentRunRecord:
         self.agent_runs.append(run)
         return run

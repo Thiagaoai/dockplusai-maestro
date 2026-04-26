@@ -65,6 +65,8 @@ class Settings(BaseSettings):
         ),
     )
 
+    replicate_api_token: str = ""
+
     apollo_api_key: str = ""
     hunter_api_key: str = ""
     tavily_api_key: str = ""
@@ -80,6 +82,8 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_refresh_token: str = ""
+    gmail_webhook_secret: str = ""
+    gmail_watch_email: str = ""
     stripe_secret_key_roberts: str = ""
     stripe_secret_key_dockplusai: str = ""
     gbp_api_key: str = ""
