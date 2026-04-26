@@ -4,9 +4,10 @@ import asyncio
 from typing import Any
 
 import httpx
+from bs4 import BeautifulSoup
 
 from maestro.config import Settings
-from maestro.services.tavily import BAD_EMAIL_PREFIXES, EMAIL_RE, WebProspect
+from maestro.services.tavily import BAD_EMAIL_PREFIXES, EMAIL_RE, USER_AGENT, WebProspect
 
 ACTOR_RUN_URL = "https://api.apify.com/v2/acts/compass~crawler-google-places/runs"
 ACTOR_RUN_STATUS_URL = "https://api.apify.com/v2/actor-runs/{run_id}"
@@ -62,31 +63,37 @@ class ApifyProspectFinder:
             await self._wait_for_run(client, run_id, headers)
             items = await self._fetch_dataset(client, dataset_id, headers)
 
-        prospects: list[WebProspect] = []
-        seen_emails: set[str] = set()
-        for item in items:
-            location = self._guess_location(item, locations)
-            for email in self._emails_from_item(item):
-                key = email.casefold()
-                if key in seen_emails:
-                    continue
-                seen_emails.add(key)
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as web_client:
+            prospects: list[WebProspect] = []
+            seen_emails: set[str] = set()
+            for item in items:
+                location = self._guess_location(item, locations)
                 name = item.get("title") or item.get("name") or "Unknown"
                 website = item.get("website") or ""
-                prospects.append(
-                    WebProspect(
-                        name=name,
-                        email=key,
-                        source_url=website or f"https://maps.google.com/?cid={item.get('cid', '')}",
-                        source_title=name,
-                        verification_note=(
-                            f"Apify Google Maps: {name} in {location}"
-                        ),
-                        location=location,
-                        target=target,
-                        raw=item,
+
+                emails = self._emails_from_item(item)
+                if not emails and website:
+                    emails = await self._emails_from_site(web_client, website)
+
+                for email in emails:
+                    key = email.casefold()
+                    if key in seen_emails:
+                        continue
+                    seen_emails.add(key)
+                    prospects.append(
+                        WebProspect(
+                            name=name,
+                            email=key,
+                            source_url=website or f"https://maps.google.com/?cid={item.get('cid', '')}",
+                            source_title=name,
+                            verification_note=(
+                                f"Apify Google Maps: {name} in {location}"
+                            ),
+                            location=location,
+                            target=target,
+                            raw=item,
+                        )
                     )
-                )
         return prospects
 
     def _query(self, target: str, location: str) -> str:
@@ -144,6 +151,29 @@ class ApifyProspectFinder:
             for m in EMAIL_RE.findall(text):
                 email = m.casefold()
                 if not any(email.startswith(p) for p in BAD_EMAIL_PREFIXES):
+                    emails.append(email)
+        return emails
+
+    async def _emails_from_site(self, client: httpx.AsyncClient, url: str) -> list[str]:
+        try:
+            r = await client.get(url, timeout=15.0)
+            if r.status_code >= 400 or "text/html" not in r.headers.get("content-type", ""):
+                return []
+            html = r.text
+        except httpx.HTTPError:
+            return []
+        soup = BeautifulSoup(html, "html.parser")
+        emails: list[str] = []
+        for link in soup.find_all("a", href=True):
+            href = link.get("href", "")
+            if href.lower().startswith("mailto:"):
+                email = href.replace("mailto:", "").split("?")[0].strip().casefold()
+                if email and not any(email.startswith(p) for p in BAD_EMAIL_PREFIXES):
+                    emails.append(email)
+        if not emails:
+            for m in EMAIL_RE.findall(soup.get_text()):
+                email = m.casefold()
+                if not any(email.startswith(p) for p in BAD_EMAIL_PREFIXES) and email not in emails:
                     emails.append(email)
         return emails
 
