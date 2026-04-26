@@ -60,7 +60,7 @@ async def create_post_with_llm(topic: str, profile: BusinessProfile, settings) -
 
     try:
         from maestro.subagents.marketing.content_creator import generate_image
-        from maestro.utils.llm import SONNET, call_claude
+        from maestro.utils.llm import SONNET, UnknownModelPricingError, call_claude
         from maestro.utils.prompts import load_prompt
 
         context = {
@@ -104,6 +104,8 @@ async def create_post_with_llm(topic: str, profile: BusinessProfile, settings) -
             "rationale": result.get("rationale", ""),
         }
 
+    except UnknownModelPricingError:
+        raise
     except Exception as exc:
         log.warning("caption_writer_llm_failed", error=str(exc), fallback="template")
         if not fallback.get("image_url"):

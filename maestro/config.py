@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     google_refresh_token: str = ""
     gmail_webhook_secret: str = ""
     gmail_watch_email: str = ""
+    gmail_watch_topic_name: str = ""  # e.g. projects/milo-492604/topics/maestro-gmail
     stripe_secret_key_roberts: str = ""
     stripe_secret_key_dockplusai: str = ""
     gbp_api_key: str = ""
@@ -94,7 +95,7 @@ class Settings(BaseSettings):
     thiago_approval_threshold_usd: float = 500.0
 
     prospecting_batch_size_roberts: int = 10
-    weekly_scheduler_timezone: str = "UTC"
+    weekly_scheduler_timezone: str = "America/New_York"
     weekly_cfo_day_of_week: str = "mon"
     weekly_cfo_hour: int = 7
     weekly_cmo_day_of_week: str = "mon"

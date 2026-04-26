@@ -2,8 +2,6 @@ from html import escape
 from typing import Any
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from langsmith import traceable
-
 from maestro.config import Settings
 from maestro.profiles import load_profile
 from maestro.schemas.events import AgentRunRecord, ApprovalRequest, LeadRecord
@@ -281,7 +279,6 @@ class ProspectingAgent:
   </body>
 </html>"""
 
-    @traceable(name="prospecting_prepare_batch", run_type="chain", tags=["agent", "prospecting"])
     async def prepare_roberts_batch(
         self,
         batch_size: int | None = None,

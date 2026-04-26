@@ -1,5 +1,4 @@
 import structlog
-from langsmith import traceable
 
 from maestro.config import Settings
 from maestro.profiles._schema import BusinessProfile
@@ -14,7 +13,6 @@ class MarketingAgent:
         self.settings = settings
         self.profile = profile
 
-    @traceable(name="marketing_create_post", run_type="chain", tags=["agent", "marketing"])
     async def create_post(self, topic: str) -> tuple[AgentResult, AgentRunRecord]:
         post_content = await self._build_post_content(topic)
 

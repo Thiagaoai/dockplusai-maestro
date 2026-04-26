@@ -1,5 +1,4 @@
 import structlog
-from langsmith import traceable
 
 from maestro.config import Settings
 from maestro.profiles._schema import BusinessProfile
@@ -24,7 +23,6 @@ class CMOAgent:
         self.settings = settings
         self.profile = profile
 
-    @traceable(name="cmo_run", run_type="chain", tags=["agent", "cmo"])
     async def run(self, request: str = "weekly marketing briefing") -> tuple[AgentResult, AgentRunRecord]:
         real_performance = await self._real_performance()
         performance = analyze_ad_performance(self.profile, real_performance)
@@ -116,7 +114,7 @@ class CMOAgent:
         if not self.settings.anthropic_api_key:
             return {}
         try:
-            from maestro.utils.llm import SONNET, call_claude_json
+            from maestro.utils.llm import SONNET, UnknownModelPricingError, call_claude_json
             from maestro.utils.prompts import load_prompt
 
             context = {
@@ -140,6 +138,8 @@ class CMOAgent:
             )
             log.info("cmo_llm_summary_ok", business=self.profile.business_id)
             return result
+        except UnknownModelPricingError:
+            raise
         except Exception as exc:
             log.warning("cmo_llm_summary_failed", error=str(exc))
             return {}

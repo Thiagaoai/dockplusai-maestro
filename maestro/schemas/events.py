@@ -44,6 +44,8 @@ class AgentRunRecord(BaseModel):
     output: str
     profit_signal: str
     prompt_version: str
+    tokens_in: int | None = None
+    tokens_out: int | None = None
     cost_usd: float | None = None
     langsmith_trace_url: str | None = None
     human_approved: bool | None = None

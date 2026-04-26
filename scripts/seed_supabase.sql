@@ -183,6 +183,33 @@ CREATE TABLE IF NOT EXISTS memory_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_memory_business ON memory_chunks(business);
 
+CREATE INDEX IF NOT EXISTS idx_memory_chunks_embedding
+  ON memory_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+CREATE OR REPLACE FUNCTION increment_memory_access(chunk_id UUID)
+RETURNS VOID LANGUAGE SQL AS $$
+  UPDATE memory_chunks
+  SET access_count = access_count + 1,
+      last_accessed_at = NOW()
+  WHERE id = chunk_id;
+$$;
+
+CREATE OR REPLACE FUNCTION match_memory_chunks(
+  query_embedding VECTOR(1536),
+  business_filter TEXT,
+  match_count INT DEFAULT 5
+)
+RETURNS TABLE (id UUID, content TEXT, metadata JSONB, similarity FLOAT)
+LANGUAGE SQL STABLE AS $$
+  SELECT id, content, metadata,
+         1 - (embedding <=> query_embedding) AS similarity
+  FROM memory_chunks
+  WHERE business = business_filter
+    AND embedding IS NOT NULL
+  ORDER BY embedding <=> query_embedding
+  LIMIT match_count;
+$$;
+
 CREATE TABLE IF NOT EXISTS corrections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_run_id UUID REFERENCES agent_runs(id),

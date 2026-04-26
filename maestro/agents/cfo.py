@@ -1,5 +1,4 @@
 import structlog
-from langsmith import traceable
 
 from maestro.config import Settings
 from maestro.profiles._schema import BusinessProfile
@@ -21,7 +20,6 @@ class CFOAgent:
         self.settings = settings
         self.profile = profile
 
-    @traceable(name="cfo_run", run_type="chain", tags=["agent", "cfo"])
     async def run(self, question: str = "weekly financial briefing") -> tuple[AgentResult, AgentRunRecord]:
         stripe_summary = await self._stripe_summary()
         pipeline_summary = await self._pipeline_summary()
@@ -113,7 +111,7 @@ class CFOAgent:
         if not self.settings.anthropic_api_key:
             return {}
         try:
-            from maestro.utils.llm import SONNET, call_claude_json
+            from maestro.utils.llm import SONNET, UnknownModelPricingError, call_claude_json
             from maestro.utils.prompts import load_prompt
 
             context = {
@@ -135,6 +133,8 @@ class CFOAgent:
             )
             log.info("cfo_llm_summary_ok", business=self.profile.business_id)
             return result
+        except UnknownModelPricingError:
+            raise
         except Exception as exc:
             log.warning("cfo_llm_summary_failed", error=str(exc))
             return {}

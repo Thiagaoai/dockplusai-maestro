@@ -11,6 +11,9 @@ Without the lock, APScheduler fires per-process — a fast restart or
 multi-replica deploy will double-fire CFO/CMO/CEO. See CLAUDE.md gotchas.
 """
 
+import time
+
+import httpx
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -20,12 +23,14 @@ from maestro.agents.cfo import CFOAgent
 from maestro.agents.cmo import CMOAgent
 from maestro.agents.prospecting import ProspectingAgent
 from maestro.config import get_settings
-from maestro.memory.redis_session import acquire_cron_lock, is_stopped, release_cron_lock
+from maestro.memory.redis_session import acquire_cron_lock, get_redis, is_stopped, release_cron_lock
 from maestro.profiles import load_profile
 from maestro.repositories import store
 from maestro.schemas.events import AgentResult, AgentRunRecord
 from maestro.services.cost_monitor import evaluate_cost_guard
+from maestro.services.gmail import GmailClient
 from maestro.services.telegram import TelegramService
+from maestro.utils.langsmith import trace_agent_run
 
 log = structlog.get_logger()
 
@@ -45,7 +50,25 @@ async def run_cfo() -> None:
         settings = get_settings()
         telegram = TelegramService(settings)
         for business in WEEKLY_BUSINESSES:
-            result, run = await CFOAgent(settings, load_profile(business)).run()
+            if await _cost_guard_blocks(settings, "cfo_weekly", business):
+                return
+            async with trace_agent_run(
+                settings,
+                name="cfo_weekly",
+                agent="cfo",
+                business=business,
+                event_id=f"cron:cfo:{business}",
+                inputs={"question": "weekly financial briefing"},
+            ) as trace_run:
+                result, run = await CFOAgent(settings, load_profile(business)).run()
+                trace_run.end(
+                    {
+                        "agent_name": result.agent_name,
+                        "profit_signal": result.profit_signal,
+                        "has_approval": result.approval is not None,
+                    }
+                )
+                trace_run.apply_to_run(run)
             await _persist_weekly_result(result, run, "cfo_weekly", telegram)
         log.info("cron_cfo_weekly_done")
     except Exception as exc:
@@ -65,7 +88,25 @@ async def run_cmo() -> None:
         settings = get_settings()
         telegram = TelegramService(settings)
         for business in WEEKLY_BUSINESSES:
-            result, run = await CMOAgent(settings, load_profile(business)).run()
+            if await _cost_guard_blocks(settings, "cmo_weekly", business):
+                return
+            async with trace_agent_run(
+                settings,
+                name="cmo_weekly",
+                agent="cmo",
+                business=business,
+                event_id=f"cron:cmo:{business}",
+                inputs={"request": "weekly marketing briefing"},
+            ) as trace_run:
+                result, run = await CMOAgent(settings, load_profile(business)).run()
+                trace_run.end(
+                    {
+                        "agent_name": result.agent_name,
+                        "profit_signal": result.profit_signal,
+                        "has_approval": result.approval is not None,
+                    }
+                )
+                trace_run.apply_to_run(run)
             await _persist_weekly_result(result, run, "cmo_weekly", telegram)
         log.info("cron_cmo_weekly_done")
     except Exception as exc:
@@ -85,7 +126,25 @@ async def run_ceo() -> None:
         settings = get_settings()
         telegram = TelegramService(settings)
         for business in WEEKLY_BUSINESSES:
-            result, run = await CEOAgent(settings, load_profile(business)).run()
+            if await _cost_guard_blocks(settings, "ceo_weekly", business):
+                return
+            async with trace_agent_run(
+                settings,
+                name="ceo_weekly",
+                agent="ceo",
+                business=business,
+                event_id=f"cron:ceo:{business}",
+                inputs={"request": "weekly executive briefing"},
+            ) as trace_run:
+                result, run = await CEOAgent(settings, load_profile(business)).run()
+                trace_run.end(
+                    {
+                        "agent_name": result.agent_name,
+                        "profit_signal": result.profit_signal,
+                        "has_approval": result.approval is not None,
+                    }
+                )
+                trace_run.apply_to_run(run)
             await _persist_weekly_result(result, run, "ceo_weekly", telegram)
             await telegram.send_message(_weekly_briefing_message(result))
         log.info("cron_ceo_weekly_done")
@@ -132,6 +191,19 @@ async def _persist_weekly_result(
         await telegram.send_approval_card(result.approval.id, result.approval.preview)
 
 
+async def _cost_guard_blocks(settings, job: str, business: str) -> bool:
+    snapshot = await evaluate_cost_guard(settings, store, source=job)
+    if not snapshot.should_block:
+        return False
+    log.warning(
+        "cron_skipped_cost_guard",
+        job=job,
+        business=business,
+        **snapshot.model_dump(),
+    )
+    return True
+
+
 def _weekly_briefing_message(result: AgentResult) -> str:
     briefing = str(result.data.get("briefing") or result.message or "")
     return (
@@ -165,7 +237,25 @@ async def run_roberts_prospecting_batch() -> None:
     try:
         settings = get_settings()
         log.info("cron_roberts_prospecting_batch_start")
-        approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(mode="owned")
+        if await _cost_guard_blocks(settings, "roberts_prospecting_batch", "roberts"):
+            return
+        async with trace_agent_run(
+            settings,
+            name="roberts_prospecting_batch",
+            agent="prospecting",
+            business="roberts",
+            event_id="cron:prospecting:roberts",
+            inputs={"mode": "owned"},
+        ) as trace_run:
+            approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(mode="owned")
+            trace_run.end(
+                {
+                    "approval_id": approval.id if approval else None,
+                    "profit_signal": run.profit_signal,
+                    "has_approval": approval is not None,
+                }
+            )
+            trace_run.apply_to_run(run)
         await store.add_agent_run(run)
         if not approval:
             log.info("cron_roberts_prospecting_batch_empty")
@@ -184,6 +274,52 @@ async def run_roberts_prospecting_batch() -> None:
         log.error("cron_roberts_prospecting_batch_error", error=str(exc))
     finally:
         release_cron_lock("roberts_prospecting_batch")
+
+
+# ── gmail watch renewal ───────────────────────────────────────────────────────
+
+_SIX_DAYS = 6 * 86_400
+_GMAIL_RENEWAL_KEY = "gmail_watch_renewal:last_run"
+
+
+async def run_gmail_watch_renewal() -> None:
+    """Daily job: renew Gmail Pub/Sub watch if 6+ days have passed.
+
+    Gmail watch expires after 7 days. Running daily and guarding with a
+    Redis timestamp achieves a true 6-day renewal without APScheduler
+    needing a non-standard interval trigger.
+    """
+    if is_stopped():
+        log.info("cron_skipped_stopped", job="gmail_watch_renewal")
+        return
+    if not acquire_cron_lock("gmail_watch_renewal", timeout=50):
+        return
+    try:
+        log.info("cron_gmail_watch_renewal_start")
+        settings = get_settings()
+        if not settings.gmail_watch_topic_name or not settings.google_refresh_token:
+            log.warning("gmail_watch_renewal_skipped_not_configured")
+            return
+        r = get_redis()
+        if r is not None:
+            last = r.get(_GMAIL_RENEWAL_KEY)
+            if last and (time.time() - float(last)) < _SIX_DAYS:
+                log.info("gmail_watch_renewal_skipped_not_due")
+                return
+        gmail = GmailClient(settings)
+        async with httpx.AsyncClient(timeout=30) as client:
+            result = await gmail.setup_watch(client, settings.gmail_watch_topic_name)
+        if r is not None:
+            r.set(_GMAIL_RENEWAL_KEY, str(time.time()))
+        log.info(
+            "cron_gmail_watch_renewal_done",
+            history_id=result.get("historyId"),
+            expiration=result.get("expiration"),
+        )
+    except Exception as exc:
+        log.error("cron_gmail_watch_renewal_error", error=str(exc))
+    finally:
+        release_cron_lock("gmail_watch_renewal")
 
 
 # ── scheduler setup ───────────────────────────────────────────────────────────
@@ -251,6 +387,14 @@ def setup_scheduler() -> AsyncIOScheduler:
             id=f"roberts_prospecting_{hour:02d}00",
             replace_existing=True,
         )
+
+    # Gmail Watch renewal — daily at 01:00 ET; internally checks 6-day cadence
+    scheduler.add_job(
+        run_gmail_watch_renewal,
+        CronTrigger(hour=1, minute=0, timezone=settings.weekly_scheduler_timezone),
+        id="gmail_watch_renewal",
+        replace_existing=True,
+    )
 
     log.info("scheduler_jobs_registered", job_count=len(scheduler.get_jobs()))
     return scheduler

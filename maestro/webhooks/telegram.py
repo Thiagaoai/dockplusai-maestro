@@ -19,6 +19,7 @@ from maestro.repositories import store
 from maestro.schemas.events import ApprovalStatus
 from maestro.services import DryRunActionExecutor, TelegramService
 from maestro.services.cost_monitor import evaluate_cost_guard
+from maestro.utils.langsmith import trace_agent_run
 from maestro.utils.security import verify_telegram_chat, verify_telegram_secret
 from maestro.utils.telegram_commands import parse_prospect_web_command
 
@@ -137,7 +138,16 @@ async def _handle_message(payload: dict, settings: Settings) -> dict:
                 batch_size = int(parts[3])
             result = await _do_roberts_batch(batch_size, mode, settings, telegram)
     else:
-        result = await _handle_nlp(text, chat_id, update_id, settings, telegram)
+        cost_guard = await evaluate_cost_guard(settings, store, source="telegram")
+        if cost_guard.should_block:
+            await telegram.send_message("MAESTRO pausado pelo cost monitor. Revise custos antes de retomar.")
+            result = {
+                "status": "blocked",
+                "reason": "cost_kill_switch_active",
+                "cost_guard": cost_guard.model_dump(),
+            }
+        else:
+            result = await _handle_nlp(text, chat_id, update_id, settings, telegram)
 
     if update_id:
         await store.mark_processed(f"telegram:{update_id}", "telegram", result)
@@ -202,7 +212,23 @@ async def _do_roberts_batch(
             "reason": "cost_kill_switch_active",
             "cost_guard": cost_guard.model_dump(),
         }
-    approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(batch_size, mode=mode)
+    async with trace_agent_run(
+        settings,
+        name="telegram_prospecting_batch",
+        agent="prospecting",
+        business="roberts",
+        event_id="telegram:prospect_roberts",
+        inputs={"batch_size": batch_size, "mode": mode},
+    ) as trace_run:
+        approval, run = await ProspectingAgent(settings, store).prepare_roberts_batch(batch_size, mode=mode)
+        trace_run.end(
+            {
+                "approval_id": approval.id if approval else None,
+                "profit_signal": run.profit_signal,
+                "has_approval": approval is not None,
+            }
+        )
+        trace_run.apply_to_run(run)
     await store.add_agent_run(run)
     if approval:
         await store.create_approval(approval)
@@ -351,9 +377,25 @@ async def _run_roberts_web_prospecting(
             "reason": "cost_kill_switch_active",
             "cost_guard": cost_guard.model_dump(),
         }
-    approval, run = await ProspectingAgent(settings, store).prepare_roberts_web_search_batch(
-        target, source=source
-    )
+    async with trace_agent_run(
+        settings,
+        name="telegram_prospecting_web_search",
+        agent="prospecting",
+        business="roberts",
+        event_id=f"telegram:prospect_web:{target}",
+        inputs={"target": target, "source": source},
+    ) as trace_run:
+        approval, run = await ProspectingAgent(settings, store).prepare_roberts_web_search_batch(
+            target, source=source
+        )
+        trace_run.end(
+            {
+                "approval_id": approval.id if approval else None,
+                "profit_signal": run.profit_signal,
+                "has_approval": approval is not None,
+            }
+        )
+        trace_run.apply_to_run(run)
     await store.add_agent_run(run)
     if approval:
         await store.create_approval(approval)
@@ -426,7 +468,23 @@ async def _do_create_marketing_post(
 
     profile = load_profile(business)
     agent = MarketingAgent(settings, profile)
-    result, run = await agent.create_post(topic)
+    async with trace_agent_run(
+        settings,
+        name="telegram_marketing_create_post",
+        agent="marketing",
+        business=business,
+        event_id=f"telegram:marketing:{business}:{topic}",
+        inputs={"topic": topic},
+    ) as trace_run:
+        result, run = await agent.create_post(topic)
+        trace_run.end(
+            {
+                "agent_name": result.agent_name,
+                "profit_signal": result.profit_signal,
+                "has_approval": result.approval is not None,
+            }
+        )
+        trace_run.apply_to_run(run)
     await store.add_agent_run(run)
 
     if result.approval:

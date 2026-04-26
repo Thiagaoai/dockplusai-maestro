@@ -9,6 +9,7 @@ import structlog
 from langsmith.run_helpers import trace
 
 from maestro.config import Settings
+from maestro.utils.llm import LlmUsageCollector, collect_llm_usage
 
 log = structlog.get_logger()
 
@@ -16,10 +17,20 @@ log = structlog.get_logger()
 @dataclass
 class AgentTrace:
     run: Any | None = None
+    usage: LlmUsageCollector | None = None
 
     def end(self, outputs: dict[str, Any]) -> None:
+        if self.usage is not None:
+            outputs = {**outputs, "llm_usage": self.usage.model_dump()}
         if self.run is not None:
             self.run.end(outputs=outputs)
+
+    def apply_to_run(self, run: Any) -> None:
+        if self.usage is not None:
+            run.tokens_in = self.usage.tokens_in or None
+            run.tokens_out = self.usage.tokens_out or None
+            run.cost_usd = self.usage.cost_usd or None
+        run.langsmith_trace_url = self.url
 
     @property
     def url(self) -> str | None:
@@ -47,30 +58,31 @@ async def trace_agent_run(
     inputs: dict[str, Any],
 ) -> AsyncIterator[AgentTrace]:
     """Create a LangSmith root trace for one MAESTRO agent execution."""
-    if not langsmith_enabled(settings):
-        yield AgentTrace()
-        return
+    with collect_llm_usage() as usage:
+        if not langsmith_enabled(settings):
+            yield AgentTrace(usage=usage)
+            return
 
-    tags = [
-        f"business={business}",
-        f"agent={agent}",
-        f"prompt_version={settings.prompt_version}",
-    ]
-    metadata = {
-        "business": business,
-        "agent": agent,
-        "event_id": event_id,
-        "prompt_version": settings.prompt_version,
-        "dry_run": settings.dry_run,
-        "app_env": settings.app_env,
-    }
+        tags = [
+            f"business={business}",
+            f"agent={agent}",
+            f"prompt_version={settings.prompt_version}",
+        ]
+        metadata = {
+            "business": business,
+            "agent": agent,
+            "event_id": event_id,
+            "prompt_version": settings.prompt_version,
+            "dry_run": settings.dry_run,
+            "app_env": settings.app_env,
+        }
 
-    async with trace(
-        name,
-        run_type="chain",
-        inputs=inputs,
-        project_name=settings.langchain_project,
-        tags=tags,
-        metadata=metadata,
-    ) as run:
-        yield AgentTrace(run)
+        async with trace(
+            name,
+            run_type="chain",
+            inputs=inputs,
+            project_name=settings.langchain_project,
+            tags=tags,
+            metadata=metadata,
+        ) as run:
+            yield AgentTrace(run=run, usage=usage)

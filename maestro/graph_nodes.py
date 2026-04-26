@@ -129,7 +129,7 @@ async def sdr_node(state: dict[str, Any]) -> dict[str, Any]:
                 "profit_signal": run.profit_signal,
             }
         )
-        run.langsmith_trace_url = trace_run.url
+        trace_run.apply_to_run(run)
 
     # Persist to InMemoryStore (same as old MaestroOrchestrator)
     await store.upsert_lead(lead)
@@ -190,7 +190,7 @@ async def prospecting_node(state: dict[str, Any]) -> dict[str, Any]:
                 "has_approval": approval is not None,
             }
         )
-        run.langsmith_trace_url = trace_run.url
+        trace_run.apply_to_run(run)
 
     if approval:
         await store.create_approval(approval)
@@ -247,7 +247,7 @@ async def phase1_agent_node(state: dict[str, Any]) -> dict[str, Any]:
                 "status": agent_result.status,
             }
         )
-        run.langsmith_trace_url = trace_run.url
+        trace_run.apply_to_run(run)
 
     await store.add_agent_run(run)
     await store.add_audit_log(

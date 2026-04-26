@@ -31,7 +31,7 @@
 - [x] Approval callback genérico para SDR, Marketing, CMO e Operations
 - [x] Weekly scheduler chama CFO/CMO/CEO em dry-run
 - [x] Testes E2E cobrindo vertical slice + agents Fase 1
-- [x] Test suite atual: `16 passed`
+- [x] Test suite atual: `203 passed` baseline; nova suíte de accounting/observabilidade adicionada
 
 ### Próximo bloco real
 
@@ -76,8 +76,11 @@
 - [x] Conectar Telegram dev bot real (`@maestro_dev_bot`): webhook público validado via ngrok
 - [ ] Conectar GHL sandbox real
 - [ ] Validar fluxo real SDR aprovado: email enviado + calendar criado + GHL consultado, ainda com HITL
-- [ ] Adicionar LangSmith traces reais por agent
-- [ ] Adicionar LLM real nos subagents onde fizer diferença, preservando fallback determinístico
+- [x] Adicionar camada central `trace_agent_run` para traces LangSmith por agent com tags `business`, `agent`, `prompt_version`
+- [x] Adicionar accounting LLM real via `contextvars`: `tokens_in`, `tokens_out`, `cost_usd` em `agent_runs`
+- [x] Cost guard bloqueia grafo, scheduler e comandos diretos Telegram antes de executar agents
+- [ ] Rodar smoke real LangSmith/Anthropic em `maestro-prod` com `DRY_RUN=true`
+- [ ] Adicionar LLM real nos subagents restantes onde fizer diferença, preservando fallback determinístico
 
 ---
 
@@ -96,7 +99,7 @@
 ### APIs — smoke test (1 dia dedicado, ambos)
 - [ ] **[T]** Anthropic API: chave funciona, Tier 4 confirmado (`curl` com Sonnet 4.6)
 - [ ] **[T]** OpenAI API: chave funciona (fallback)
-- [ ] **[G]** LangSmith: projeto `maestro-prod` criado, primeiro trace de teste enviado
+- [ ] **[G]** LangSmith: projeto `maestro-prod` criado, primeiro trace de teste enviado com `scripts/smoke_langsmith_trace.py`
 - [ ] **[T]** GHL Roberts: location token + webhook secret. Testar: criar contato fake, receber 1 evento webhook
 - [ ] **[T]** GHL DockPlus AI: idem
 - [ ] **[G]** Resend: domínio/from validado, testar envio real para conta controlada
@@ -463,16 +466,19 @@
 - [ ] **[G]** Webhook signature inválida: retorna 403, loga, alerta se >5 em 5min
 
 ### Cost monitor
-- [ ] **[G]** `scripts/cost_monitor.py`:
+- [x] **[G]** Cost guard ativo:
   - Lê `agent_runs.cost_usd` do dia
-  - Se >$15: Telegram INFO pra Thiago
-  - Se >$30: pausa crons (APScheduler pause), mantém webhooks ativos, Telegram CRÍTICO
+  - Se >$15: registra alerta em `audit_log` e log estruturado
+  - Se >$30: pausa agents via store + Redis kill switch, mantém webhooks ativos
   - Roda a cada hora via APScheduler
-- [ ] **[G]** `daily_costs` table atualizada a cada agent run
-- [ ] **[T]** Verificar: simular custo alto artificialmente, confirmar kill switch funciona
+- [ ] **[G]** Alertas Telegram para cost alert/kill
+- [ ] **[G]** `daily_costs` table atualizada a cada agent run (backlog; fonte da verdade atual é `agent_runs`)
+- [x] **[T]** Verificar: simular custo alto artificialmente, confirmar kill switch funciona em grafo, scheduler e Telegram
 
 ### Observabilidade
-- [ ] **[G]** LangSmith: tags em todos os traces (`business=`, `agent=`, `prompt_version=`)
+- [x] **[G]** LangSmith: tags em todos os traces (`business=`, `agent=`, `prompt_version=`)
+- [x] **[G]** Agent runs persistem `tokens_in`, `tokens_out`, `cost_usd` quando chamadas Claude usam `call_claude`
+- [ ] **[G]** Smoke real em `maestro-prod`: `scripts/smoke_langsmith_trace.py` com `DRY_RUN=true`
 - [ ] **[G]** `scripts/dashboard.py` — CLI simples: latência P50/P90, taxa erro, custo dia, leads processados
 - [ ] **[G]** Alertas Telegram: todos os eventos críticos do SDD §13.5 implementados
 

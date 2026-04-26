@@ -8,7 +8,6 @@ Enrichment waterfall:
 from urllib.parse import urlparse
 
 import structlog
-from langsmith import traceable
 
 from maestro.config import Settings
 from maestro.profiles._schema import BusinessProfile
@@ -129,7 +128,6 @@ class SDRAgent:
             "company": (person.get("company") or {}).get("name"),
         }
 
-    @traceable(name="sdr_prepare_lead", run_type="chain", tags=["agent", "sdr"])
     async def prepare_lead(self, lead_in: LeadIn) -> tuple[LeadRecord, ApprovalRequest, AgentRunRecord]:
         lead = LeadRecord(**lead_in.model_dump())
 

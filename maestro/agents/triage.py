@@ -157,6 +157,27 @@ def _normalize_result(raw_result: dict[str, Any], last_business: str) -> dict:
     return result.model_dump()
 
 
+async def _fetch_memory_context(business: str, text: str, settings: Any) -> str:
+    """Return a formatted memory block to inject into the triage prompt.
+
+    Fails silently — memory errors must never break triage.
+    """
+    try:
+        from maestro.memory.supabase_memory import SupabaseMemory
+
+        mem = SupabaseMemory(settings)
+        if not mem.is_configured():
+            return ""
+        chunks = await mem.search(business, text, limit=3)
+        if not chunks:
+            return ""
+        lines = "\n".join(f"- {c['content']}" for c in chunks)
+        return f"\n\nRelevant past context:\n{lines}"
+    except Exception as exc:
+        log.warning("triage_memory_fetch_failed", error=str(exc))
+        return ""
+
+
 async def triage_message(
     text: str,
     last_business: str = "roberts",
@@ -181,7 +202,8 @@ async def triage_message(
 
             anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
-        context = f"[last_active_business: {last_business}]\n\nUser message: {text}"
+        memory_ctx = await _fetch_memory_context(last_business, text, settings)
+        context = f"[last_active_business: {last_business}]\n\nUser message: {text}{memory_ctx}"
 
         response = await anthropic_client.messages.create(
             model=settings.anthropic_triage_model,

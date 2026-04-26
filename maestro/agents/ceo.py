@@ -1,5 +1,4 @@
 import structlog
-from langsmith import traceable
 
 from maestro.agents.cfo import CFOAgent
 from maestro.agents.cmo import CMOAgent
@@ -16,7 +15,6 @@ class CEOAgent:
         self.settings = settings
         self.profile = profile
 
-    @traceable(name="ceo_run", run_type="chain", tags=["agent", "ceo"])
     async def run(self, request: str = "weekly executive briefing") -> tuple[AgentResult, AgentRunRecord]:
         cfo_result, _ = await CFOAgent(self.settings, self.profile).run(request)
         cmo_result, _ = await CMOAgent(self.settings, self.profile).run(request)

@@ -52,7 +52,7 @@ async def create_briefing_with_decisions(profile, cfo_data: dict, cmo_data: dict
         return fallback
 
     try:
-        from maestro.utils.llm import OPUS, call_claude
+        from maestro.utils.llm import OPUS, UnknownModelPricingError, call_claude
         from maestro.utils.prompts import load_prompt
 
         context = {
@@ -90,6 +90,8 @@ async def create_briefing_with_decisions(profile, cfo_data: dict, cmo_data: dict
             "week_priority": result.get("week_priority", ""),
         }
 
+    except UnknownModelPricingError:
+        raise
     except Exception as exc:
         log.warning("ceo_briefing_llm_failed", error=str(exc), fallback="sync")
         return fallback
