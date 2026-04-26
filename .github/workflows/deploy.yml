@@ -5,12 +5,39 @@ on:
     branches: [main]
 
 env:
-  REGISTRY: ghcr.io
   IMAGE: ghcr.io/thiagaoai/dockplusai-maestro
 
 jobs:
   test:
-    uses: ./.github/workflows/ci.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install uv && uv sync --all-extras
+      - run: uv run pytest --cov=maestro --cov-report=term-missing
+        env:
+          APP_ENV: test
+          DRY_RUN: "true"
+          STORAGE_BACKEND: memory
+          ANTHROPIC_API_KEY: test-key
+          OPENAI_API_KEY: test-key
+          TELEGRAM_BOT_TOKEN: test-token
+          TELEGRAM_WEBHOOK_SECRET: test-secret
+          TELEGRAM_THIAGO_CHAT_ID: "123456789"
+          GHL_TOKEN_ROBERTS: test
+          GHL_LOCATION_ID_ROBERTS: test
+          GHL_WEBHOOK_SECRET_ROBERTS: test
+          GHL_TOKEN_DOCKPLUSAI: test
+          GHL_LOCATION_ID_DOCKPLUSAI: test
+          GHL_WEBHOOK_SECRET_DOCKPLUSAI: test
+          SUPABASE_URL: http://localhost
+          SUPABASE_SERVICE_KEY: test
+          SUPABASE_ANON_KEY: test
+          REDIS_URL: redis://localhost:6379/0
+          LANGCHAIN_API_KEY: test
+          PROMPT_VERSION: v1
 
   build-push:
     runs-on: ubuntu-latest
@@ -18,8 +45,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,22 +55,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable={{is_default_branch}}
-
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.IMAGE }}:latest,${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -59,11 +74,13 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: IMAGE,GHCR_TOKEN
+          envs_from_secrets: GHCR_TOKEN
           script: |
             set -e
             cd /opt/maestro
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker compose pull app
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u Thiagaoai --password-stdin
+            docker pull $IMAGE:latest
             docker compose up -d --remove-orphans
             docker compose exec -T app python -c "import maestro; print('OK')"
-            echo "Deploy done: $(date -u)"
+            echo "Deploy concluido: $(date -u)"
