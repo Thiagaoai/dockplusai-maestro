@@ -22,7 +22,7 @@ services:
       - app
 
   app:
-    image: ghcr.io/thiagaoai/dockplusai-maestro:latest
+    build: .
     env_file: .env
     restart: unless-stopped
     depends_on:
