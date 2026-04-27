@@ -2,6 +2,7 @@ from maestro.repositories import store
 from maestro.schemas.events import LeadRecord
 from maestro.services.prospecting import prospect_queue_item
 from maestro.services.tavily import WebProspect
+from maestro.config import get_settings
 from maestro.webhooks.telegram import _clear_pending_command, _get_pending_command, _message_text
 
 
@@ -54,6 +55,68 @@ def test_prospect_roberts_command_creates_batch_approval(client):
         "customer_file",
     ]
     assert [item["status"] for item in store.prospect_queue] == ["drafted", "drafted", "queued"]
+
+
+def test_prospect_roberts_batch_skips_missing_email_before_approval(client):
+    seed_prospect("No Email", "", "customer_file", "no-email")
+    seed_prospect("With Email", "with@example.com", "customer_file", "with-email")
+
+    response = telegram_message(client, "prospect roberts 2", 315)
+
+    assert response.status_code == 200
+    approval = store.approvals[response.json()["approval_id"]]
+    assert approval.preview["campaign"]["batch_size"] == 1
+    assert approval.preview["prospects"][0]["source_ref"] == "with-email"
+
+
+def test_prospect_roberts_batch_respects_daily_send_limit(client, monkeypatch):
+    monkeypatch.setenv("PROSPECTING_DAILY_SEND_LIMIT_ROBERTS", "1")
+    get_settings.cache_clear()
+    seed_prospect("One", "one@example.com", "customer_file", "one")
+    seed_prospect("Two", "two@example.com", "customer_file", "two")
+
+    response = telegram_message(client, "prospect roberts 2", 316)
+
+    assert response.status_code == 200
+    approval = store.approvals[response.json()["approval_id"]]
+    assert approval.preview["campaign"]["batch_size"] == 1
+
+
+async def test_prospect_roberts_batch_suppresses_recently_sent_email(monkeypatch):
+    monkeypatch.setenv("PROSPECTING_RECENT_SEND_SUPPRESSION_DAYS", "60")
+    get_settings.cache_clear()
+    seed_prospect("Old Sent", "sent@example.com", "customer_file", "sent")
+    seed_prospect("Fresh", "fresh@example.com", "customer_file", "fresh")
+    await store.add_audit_log(
+        event_type="tool_call",
+        business="roberts",
+        agent="prospecting",
+        action="prospecting_batch_send_html",
+        payload={"sent_count": 1, "sent": [{"email": "sent@example.com"}]},
+    )
+
+    from maestro.agents.prospecting import ProspectingAgent
+
+    approval, _ = await ProspectingAgent(get_settings(), store).prepare_roberts_batch(
+        batch_size=2,
+        mode="owned",
+    )
+
+    assert approval is not None
+    assert [item["source_ref"] for item in approval.preview["prospects"]] == ["fresh"]
+
+
+def test_prospect_roberts_real_send_flag_marks_owned_batch_live(client, monkeypatch):
+    monkeypatch.setenv("PROSPECTING_REAL_SEND_ROBERTS", "true")
+    get_settings.cache_clear()
+    seed_prospect("Owned One", "owned1@example.com", "customer_file", "owned-1")
+
+    response = telegram_message(client, "prospect roberts 1", 314)
+
+    assert response.status_code == 200
+    approval = store.approvals[response.json()["approval_id"]]
+    assert approval.preview["dry_run"] is False
+    assert approval.preview["force_real_send"] is True
 
 
 def test_prospect_roberts_web_uses_scrape_queue_only(client):
@@ -236,8 +299,48 @@ def test_prospect_web_limits_queued_batch_to_configured_size(client, monkeypatch
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "approval_requested"
-    assert data["batch_size"] == 10
-    assert len(store.prospect_queue) == 10
+    expected = min(15, get_settings().prospecting_batch_size_roberts)
+    assert data["batch_size"] == expected
+    assert len(store.prospect_queue) == expected
+
+
+def test_prospect_web_selects_new_refs_even_with_old_queue_backlog(client, monkeypatch):
+    for idx in range(250):
+        _, item = seed_prospect(
+            f"Old HOA {idx}",
+            f"old{idx}@hoa.example",
+            "scrape",
+            f"old-scrape-{idx}",
+        )
+        item["priority"] = 10
+
+    async def fake_search(self, target, locations, max_results_per_location=5, max_prospects=None):
+        return [
+            WebProspect(
+                name="Fresh Marina",
+                email="fresh@marina.example",
+                source_url="https://marina.example/contact",
+                source_title="Fresh Marina Contact",
+                verification_note="Official contact page lists this email.",
+                location=locations[0],
+                target=target,
+                raw={"title": "Fresh Marina Contact", "url": "https://marina.example/contact"},
+            )
+        ]
+
+    monkeypatch.setattr(
+        "maestro.services.tavily.TavilyProspectFinder.search_prospects",
+        fake_search,
+    )
+
+    response = telegram_message(client, "prospect web marina", 313)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "approval_requested"
+    approval = store.approvals[data["approval_id"]]
+    assert approval.preview["prospects"][0]["property_name"] == "Fresh Marina"
+    assert approval.preview["prospects"][0]["source_ref"] == "tavily:roberts:marina:fresh@marina.example"
 
 
 def test_prospect_web_command_accepts_uppercase_and_slash(client):

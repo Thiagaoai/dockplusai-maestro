@@ -22,6 +22,7 @@ from maestro.services.cost_monitor import evaluate_cost_guard
 from maestro.utils.langsmith import trace_agent_run
 from maestro.utils.security import verify_telegram_chat, verify_telegram_secret
 from maestro.utils.telegram_commands import parse_prospect_web_command
+from maestro.telegram.service import TelegramCommandService
 
 router = APIRouter(prefix="/webhooks/telegram", tags=["webhooks"])
 
@@ -94,7 +95,32 @@ async def _handle_message(payload: dict, settings: Settings) -> dict:
         return {"status": "duplicate"}
 
     telegram = TelegramService(settings)
-    if text == "/stop":
+    cockpit_result = await TelegramCommandService(settings, telegram).handle_message(
+        text=text,
+        chat_id=chat_id,
+        update_id=update_id,
+    )
+    if cockpit_result.get("status") != "legacy":
+        if cockpit_result.get("status") == "needs_target":
+            intent = cockpit_result.get("intent", {})
+            _set_pending_command(
+                chat_id,
+                {
+                    "command": "prospect_web",
+                    "business": intent.get("business") or "roberts",
+                    "source": (intent.get("entities") or {}).get("source", "tavily"),
+                },
+            )
+        elif cockpit_result.get("status") == "needs_topic":
+            intent = cockpit_result.get("intent", {})
+            _set_pending_command(
+                chat_id,
+                {"command": "create_post", "business": intent.get("business") or "roberts"},
+            )
+        else:
+            _clear_pending_command(chat_id)
+        result = cockpit_result
+    elif text == "/stop":
         _clear_pending_command(chat_id)
         result = await _do_stop(update_id, telegram)
     elif text == "/start":
@@ -515,6 +541,25 @@ async def _handle_callback(payload: dict, settings: Settings) -> dict:
     event_key = f"telegram_callback:{callback_id or data}"
     if await store.is_processed(event_key):
         return {"status": "duplicate"}
+
+    if data.startswith("cmd:v1:"):
+        action = data.split(":", 2)[2]
+        text = {
+            "status": "/status",
+            "pending": "/pending",
+            "costs": "/costs",
+            "agents": "/agents",
+            "errors": "/errors",
+            "pause_all": "/stop",
+            "resume_all": "/start",
+        }.get(action, "/help")
+        result = await TelegramCommandService(settings).handle_message(
+            text=text,
+            chat_id=_chat_id_from_update(payload),
+            update_id=callback_id,
+        )
+        await store.mark_processed(event_key, "telegram", result)
+        return result
 
     parts = data.split(":")
     if len(parts) != 3 or parts[0] != "approval":

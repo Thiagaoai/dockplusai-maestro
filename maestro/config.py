@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     resend_reply_to_roberts: str = "roberts.ldc.cape@gmail.com"
     resend_from_dockplusai: str = "DockPlus AI <hello@dockplusai.com>"
     resend_reply_to_dockplusai: str = ""
+    resend_webhook_secret: str = ""
 
     composio_cli_path: str = "~/.composio/composio"
     composio_enabled: bool = True
@@ -106,6 +107,9 @@ class Settings(BaseSettings):
     prospecting_schedule_hours_roberts: str = "8,11,15,17"
     prospecting_customer_per_scrape_cycle: int = 2
     prospecting_scrape_per_cycle: int = 1
+    prospecting_daily_send_limit_roberts: int = 100
+    prospecting_recent_send_suppression_days: int = 60
+    prospecting_real_send_roberts: bool = False
     prospecting_web_locations_roberts: str = "Cape Cod, South Shore, Martha's Vineyard, Nantucket"
     roberts_promo_discount_percent: int = 10
     roberts_website_url: str = "https://robertslandscapecod.com"

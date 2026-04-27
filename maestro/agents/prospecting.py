@@ -1,6 +1,7 @@
 from html import escape
 from typing import Any
 from uuid import NAMESPACE_URL, uuid4, uuid5
+from datetime import UTC, datetime
 
 from maestro.config import Settings
 from maestro.profiles import load_profile
@@ -286,7 +287,21 @@ class ProspectingAgent:
     ) -> tuple[ApprovalRequest | None, AgentRunRecord]:
         business = "roberts"
         size = batch_size or self.settings.prospecting_batch_size_roberts
+        remaining = await self._remaining_daily_send_capacity(business)
+        if remaining <= 0:
+            run = AgentRunRecord(
+                business=business,
+                agent_name="prospecting",
+                input=f"prepare_roberts_batch mode={mode}",
+                output='{"status":"blocked","reason":"daily_send_limit_reached"}',
+                profit_signal="pipeline",
+                prompt_version=self.settings.prompt_version,
+                dry_run=self.settings.dry_run,
+            )
+            return None, run
+        size = min(size, remaining)
         selected = await self._select_batch(business, size, mode)
+        selected = await self._filter_sendable_prospects(business, selected, size)
 
         if not selected:
             run = AgentRunRecord(
@@ -306,6 +321,45 @@ class ProspectingAgent:
             size=size,
             mode=mode,
         )
+
+    async def _remaining_daily_send_capacity(self, business: str) -> int:
+        if business != "roberts":
+            return self.settings.prospecting_batch_size_roberts
+        limit = self.settings.prospecting_daily_send_limit_roberts
+        if limit <= 0 or not hasattr(self.store, "count_prospecting_emails_sent_on"):
+            return self.settings.prospecting_batch_size_roberts
+        sent_today = await self.store.count_prospecting_emails_sent_on(
+            business,
+            datetime.now(UTC).date(),
+        )
+        return max(0, limit - sent_today)
+
+    async def _filter_sendable_prospects(
+        self,
+        business: str,
+        rows: list[dict[str, Any]],
+        size: int,
+    ) -> list[dict[str, Any]]:
+        recent_sent: set[str] = set()
+        if hasattr(self.store, "get_recent_prospecting_sent_emails"):
+            recent_sent = await self.store.get_recent_prospecting_sent_emails(
+                business,
+                self.settings.prospecting_recent_send_suppression_days,
+            )
+        selected: list[dict[str, Any]] = []
+        seen_emails: set[str] = set()
+        for item in rows:
+            if not (item.get("payload") or {}).get("has_email"):
+                continue
+            lead = await self.store.get_lead(item.get("lead_id")) if item.get("lead_id") else None
+            email = (getattr(lead, "email", None) or "").casefold()
+            if not email or email in recent_sent or email in seen_emails:
+                continue
+            seen_emails.add(email)
+            selected.append(item)
+            if len(selected) >= size:
+                break
+        return selected
 
     async def prepare_roberts_web_search_batch(
         self,
@@ -363,13 +417,12 @@ class ProspectingAgent:
                 dry_run=self.settings.dry_run,
             )
             return None, run
-        selected = await self.store.list_prospect_queue(
-            business,
-            status="queued",
-            limit=size,
+        selected = await self._select_queued_refs(
+            business=business,
+            source_refs=queued_refs,
+            size=size,
             source_type="scrape",
         )
-        selected = [item for item in selected if item.get("source_ref") in set(queued_refs)][:size]
         if not selected:
             run = AgentRunRecord(
                 business=business,
@@ -391,14 +444,42 @@ class ProspectingAgent:
             source=source,
         )
 
+    async def _select_queued_refs(
+        self,
+        business: str,
+        source_refs: list[str],
+        size: int,
+        source_type: str,
+    ) -> list[dict[str, Any]]:
+        if hasattr(self.store, "get_prospect_queue_items_by_refs"):
+            selected = await self.store.get_prospect_queue_items_by_refs(
+                business=business,
+                source_refs=source_refs,
+                source_type=source_type,
+                status="queued",
+            )
+            return selected[:size]
+
+        rows = await self.store.list_prospect_queue(
+            business,
+            status="queued",
+            limit=max(size * 20, 200),
+            source_type=source_type,
+        )
+        refs = set(source_refs)
+        order = {source_ref: idx for idx, source_ref in enumerate(source_refs)}
+        selected = [item for item in rows if item.get("source_ref") in refs]
+        selected.sort(key=lambda item: order.get(item.get("source_ref"), len(order)))
+        return selected[:size]
+
     async def _select_batch(self, business: str, size: int, mode: str) -> list[dict[str, Any]]:
         if mode == "web":
             return await self.store.list_prospect_queue(
-                business, status="queued", limit=size, source_type="scrape"
+                business, status="queued", limit=max(size * 4, size), source_type="scrape"
             )
         if mode == "hybrid":
-            owned_target = max(size, self.settings.prospecting_customer_per_scrape_cycle * size)
-            scrape_target = max(size, self.settings.prospecting_scrape_per_cycle * size)
+            owned_target = max(size * 4, self.settings.prospecting_customer_per_scrape_cycle * size)
+            scrape_target = max(size * 4, self.settings.prospecting_scrape_per_cycle * size)
             owned = await self.store.list_prospect_queue(
                 business, status="queued", limit=owned_target, source_type="customer_file"
             )
@@ -412,7 +493,7 @@ class ProspectingAgent:
                 scrape_per_cycle=self.settings.prospecting_scrape_per_cycle,
             )[:size]
         return await self.store.list_prospect_queue(
-            business, status="queued", limit=size, source_type="customer_file"
+            business, status="queued", limit=max(size * 4, size), source_type="customer_file"
         )
 
     async def _approval_from_selected(
@@ -431,7 +512,11 @@ class ProspectingAgent:
         html_body = self._html_body(profile.business_name, target)
         prospects = [self._prospect_preview(item) for item in selected]
         source_refs = [item["source_ref"] for item in selected]
-        force_real_send = mode == "web"
+        force_real_send = mode == "web" or (
+            business == "roberts"
+            and mode in {"owned", "hybrid"}
+            and self.settings.prospecting_real_send_roberts
+        )
         cc = [self.settings.resend_reply_to_roberts] if self.settings.resend_reply_to_roberts else []
         preview = {
             "campaign": {

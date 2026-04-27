@@ -197,22 +197,32 @@ async def triage_message(
         return _keyword_fallback(text, last_business)
 
     try:
-        if anthropic_client is None:
-            from anthropic import AsyncAnthropic
-
-            anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        from maestro.utils.llm import UnknownModelPricingError
 
         memory_ctx = await _fetch_memory_context(last_business, text, settings)
         context = f"[last_active_business: {last_business}]\n\nUser message: {text}{memory_ctx}"
 
-        response = await anthropic_client.messages.create(
-            model=settings.anthropic_triage_model,
-            max_tokens=256,
-            temperature=0,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": context}],
-        )
-        result = _normalize_result(_parse_llm_response(_response_text(response)), last_business)
+        if anthropic_client is None:
+            from maestro.utils.llm import call_claude
+
+            raw = await call_claude(
+                _SYSTEM_PROMPT,
+                context,
+                settings=settings,
+                model=settings.anthropic_triage_model,
+                max_tokens=256,
+                temperature=0,
+            )
+        else:
+            response = await anthropic_client.messages.create(
+                model=settings.anthropic_triage_model,
+                max_tokens=256,
+                temperature=0,
+                system=_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": context}],
+            )
+            raw = _response_text(response)
+        result = _normalize_result(_parse_llm_response(raw), last_business)
 
         log.info(
             "triage_classified",
@@ -222,6 +232,8 @@ async def triage_message(
         )
         return result
 
+    except UnknownModelPricingError:
+        raise
     except Exception as exc:
         log.warning("triage_llm_failed", error=str(exc), fallback="keyword")
         return _keyword_fallback(text, last_business)

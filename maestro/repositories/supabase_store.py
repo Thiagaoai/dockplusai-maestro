@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -150,6 +150,31 @@ class SupabaseStore:
         response = query.execute()
         return getattr(response, "data", None) or []
 
+    async def get_prospect_queue_items_by_refs(
+        self,
+        business: str,
+        source_refs: list[str],
+        source_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not source_refs:
+            return []
+        query = (
+            self.client.table("prospect_queue")
+            .select("*")
+            .eq("business", business)
+            .in_("source_ref", source_refs)
+        )
+        if source_type:
+            query = query.eq("source_type", source_type)
+        if status:
+            query = query.eq("status", status)
+        response = query.execute()
+        rows = getattr(response, "data", None) or []
+        order = {source_ref: idx for idx, source_ref in enumerate(source_refs)}
+        rows.sort(key=lambda item: order.get(item.get("source_ref"), len(order)))
+        return rows
+
     async def update_prospect_queue_status(
         self,
         business: str,
@@ -167,6 +192,47 @@ class SupabaseStore:
             )
             updated += len(getattr(response, "data", None) or [])
         return updated
+
+    async def count_prospecting_emails_sent_on(self, business: str, day: date) -> int:
+        response = (
+            self.client.table("audit_log")
+            .select("payload,created_at")
+            .eq("business", business)
+            .eq("agent", "prospecting")
+            .eq("action", "prospecting_batch_send_html")
+            .order("created_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+        total = 0
+        for row in getattr(response, "data", None) or []:
+            created_at = _parse_datetime(row.get("created_at"))
+            if created_at and created_at.date() == day:
+                total += int((row.get("payload") or {}).get("sent_count") or 0)
+        return total
+
+    async def get_recent_prospecting_sent_emails(self, business: str, days: int = 60) -> set[str]:
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        response = (
+            self.client.table("audit_log")
+            .select("payload,created_at")
+            .eq("business", business)
+            .eq("agent", "prospecting")
+            .eq("action", "prospecting_batch_send_html")
+            .order("created_at", desc=True)
+            .limit(1000)
+            .execute()
+        )
+        emails: set[str] = set()
+        for row in getattr(response, "data", None) or []:
+            created_at = _parse_datetime(row.get("created_at"))
+            if created_at and created_at < cutoff:
+                continue
+            for item in (row.get("payload") or {}).get("sent", []):
+                email = (item.get("email") or "").casefold()
+                if email:
+                    emails.add(email)
+        return emails
 
     async def upsert_clients_web_verified(self, item: dict[str, Any]) -> dict[str, Any]:
         payload = {**item, "updated_at": datetime.now(UTC).isoformat()}
@@ -306,3 +372,12 @@ class SupabaseStore:
         )
         rows = getattr(response, "data", None) or []
         return rows[0].get("hash") if rows else None
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None

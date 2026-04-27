@@ -95,8 +95,7 @@ async def draft_email(lead: LeadRecord, profile: BusinessProfile) -> dict[str, s
         return _template_fallback(lead, profile)
 
     try:
-        from anthropic import AsyncAnthropic
-        client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        from maestro.utils.llm import SONNET, UnknownModelPricingError, call_claude
 
         user_content = (
             f"Lead name: {lead.name or 'unknown'}\n"
@@ -105,13 +104,14 @@ async def draft_email(lead: LeadRecord, profile: BusinessProfile) -> dict[str, s
             f"Estimated project: ${lead.estimated_ticket_usd or 'unknown'}"
         )
 
-        response = await client.messages.create(
-            model="claude-sonnet-4-6",
+        raw = await call_claude(
+            _build_system_prompt(profile),
+            user_content,
+            settings=settings,
+            model=SONNET,
             max_tokens=512,
-            system=_build_system_prompt(profile),
-            messages=[{"role": "user", "content": user_content}],
         )
-        result = _parse_llm_response(response.content[0].text)
+        result = _parse_llm_response(raw)
 
         log.info(
             "email_drafted",
@@ -121,6 +121,8 @@ async def draft_email(lead: LeadRecord, profile: BusinessProfile) -> dict[str, s
         )
         return result
 
+    except UnknownModelPricingError:
+        raise
     except Exception as exc:
         log.warning("email_drafter_llm_failed", error=str(exc), fallback="template")
         return _template_fallback(lead, profile)

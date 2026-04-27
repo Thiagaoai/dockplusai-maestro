@@ -134,14 +134,20 @@ async def call_claude(
     settings,
     model: str = SONNET,
     max_tokens: int = 1024,
+    temperature: float | None = None,
 ) -> str:
     ensure_known_pricing(model, settings)
     client = get_client(settings)
+    payload: dict[str, Any] = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": [{"role": "user", "content": user}],
+    }
+    if temperature is not None:
+        payload["temperature"] = temperature
     response = await client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
+        **payload,
     )
     tokens_in, tokens_out = usage_from_response(response)
     collector = current_llm_usage()

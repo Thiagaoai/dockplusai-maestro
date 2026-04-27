@@ -13,7 +13,7 @@ from maestro.graph import setup_checkpointer
 from maestro.schedulers.weekly import setup_scheduler
 from maestro.utils.llm import setup_langsmith
 from maestro.utils.logging import configure_logging
-from maestro.webhooks import ghl_router, gmail_router, telegram_router
+from maestro.webhooks import ghl_router, gmail_router, resend_router, telegram_router
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -68,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(telegram_router)
     app.include_router(ghl_router)
     app.include_router(gmail_router)
+    app.include_router(resend_router)
 
     @app.get("/health")
     async def health() -> dict:

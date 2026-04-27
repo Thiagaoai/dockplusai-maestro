@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from maestro.schemas.events import (
@@ -107,6 +107,26 @@ class InMemoryStore:
         rows.sort(key=lambda item: (-int(item.get("priority", 0)), item.get("created_at", "")))
         return rows[:limit]
 
+    async def get_prospect_queue_items_by_refs(
+        self,
+        business: str,
+        source_refs: list[str],
+        source_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        refs = set(source_refs)
+        rows = [
+            item
+            for item in self.prospect_queue
+            if item.get("business") == business
+            and item.get("source_ref") in refs
+            and (source_type is None or item.get("source_type") == source_type)
+            and (status is None or item.get("status") == status)
+        ]
+        order = {source_ref: idx for idx, source_ref in enumerate(source_refs)}
+        rows.sort(key=lambda item: order.get(item.get("source_ref"), len(order)))
+        return rows
+
     async def update_prospect_queue_status(
         self,
         business: str,
@@ -120,6 +140,34 @@ class InMemoryStore:
                 item["status"] = status
                 updated += 1
         return updated
+
+    async def count_prospecting_emails_sent_on(self, business: str, day: date) -> int:
+        total = 0
+        for record in self.audit_log:
+            if (
+                record.business == business
+                and record.agent == "prospecting"
+                and record.action == "prospecting_batch_send_html"
+                and record.created_at.date() == day
+            ):
+                total += int(record.payload.get("sent_count") or 0)
+        return total
+
+    async def get_recent_prospecting_sent_emails(self, business: str, days: int = 60) -> set[str]:
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        emails: set[str] = set()
+        for record in self.audit_log:
+            if (
+                record.business == business
+                and record.agent == "prospecting"
+                and record.action == "prospecting_batch_send_html"
+                and record.created_at >= cutoff
+            ):
+                for item in record.payload.get("sent", []):
+                    email = (item.get("email") or "").casefold()
+                    if email:
+                        emails.add(email)
+        return emails
 
     async def upsert_clients_web_verified(self, item: dict[str, Any]) -> dict[str, Any]:
         for idx, existing in enumerate(self.clients_web_verified):

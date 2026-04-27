@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -120,8 +121,12 @@ class DryRunActionExecutor:
         attempted_count = len(approval.preview.get("prospects", []))
         campaign = approval.preview.get("campaign", {})
         cc = email.get("cc") or []
+        remaining_capacity = await self._remaining_prospecting_send_capacity(approval.business)
 
         for prospect in approval.preview.get("prospects", []):
+            if approval.business == "roberts" and len(sent) >= remaining_capacity:
+                skipped.append({"source_ref": prospect.get("source_ref"), "reason": "daily_send_limit_reached"})
+                continue
             source_ref = prospect.get("source_ref")
             lead_id = prospect.get("lead_id")
             lead = await self.store.get_lead(lead_id) if lead_id else None
@@ -162,6 +167,7 @@ class DryRunActionExecutor:
             sent.append(sent_item)
             if source_ref:
                 sent_refs.append(source_ref)
+            await asyncio.sleep(0.25)
             if prospect.get("source_type") == "scrape" and hasattr(self.store, "upsert_clients_web_verified"):
                 raw = lead.raw or {}
                 try:
@@ -227,6 +233,18 @@ class DryRunActionExecutor:
             payload=result,
         )
         return result
+
+    async def _remaining_prospecting_send_capacity(self, business: str) -> int:
+        if business != "roberts":
+            return 10_000
+        limit = self.settings.prospecting_daily_send_limit_roberts
+        if limit <= 0 or not hasattr(self.store, "count_prospecting_emails_sent_on"):
+            return 10_000
+        sent_today = await self.store.count_prospecting_emails_sent_on(
+            business,
+            datetime.now(UTC).date(),
+        )
+        return max(0, limit - sent_today)
 
     async def execute_marketing_post(self, approval: ApprovalRequest) -> dict[str, Any]:
         preview = approval.preview

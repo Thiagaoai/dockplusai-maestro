@@ -13,6 +13,12 @@
 
 > Estado: backend/agents funcionando em modo **dry-run**, sem site/UI. Ações externas reais já têm Resend para email, GHL direto e camada Composio para Calendar/HighLevel quando conectado.
 
+- [x] PRD/SDD do Telegram Cockpit adicionados: `docs/PRD_TELEGRAM_COCKPIT.md` e `docs/SDD_TELEGRAM_COCKPIT.md`
+- [x] Telegram Cockpit Sprint 1 implementada: parser, registry, router, renderers, guards e controllers
+- [x] Comandos cockpit ativos: `/help`, `/status`, `/agents`, `/costs`, `/pending`, `/errors`
+- [x] Controle por Telegram: pausar/retomar tudo, agent específico e business específico
+- [x] Workflow router cobre SDR, Prospecting, Marketing, CFO, CMO, CEO e Operations com fallback legado
+- [x] Testes do Telegram Cockpit adicionados; suíte atual: `215 passed`
 - [x] FastAPI app com `/health`
 - [x] Webhook Telegram com validação de secret + whitelist `chat_id`
 - [x] Webhook GHL com HMAC por business
@@ -61,8 +67,13 @@
 - [x] Lista `Clients (1).csv` importada para Roberts: 1.130 válidos no arquivo, 1 Kim Williams excluída
 - [x] Lista `Customers.xls` importada para Roberts: 1.484 válidos no arquivo
 - [x] Base Roberts consolidada no Supabase: 2.574 leads/prospects importados e 2.574 itens queued
-- [x] Prospecting batch Roberts criado: 10 pessoas por lote, approval Telegram, HTML email via Resend
+- [x] Prospecting batch Roberts criado: 25 pessoas por lote, approval Telegram, HTML email via Resend
 - [x] Scheduler Roberts prospecting configurado: 08:00, 11:00, 15:00, 17:00 America/New_York
+- [x] Limite diário Roberts configurado: 100 emails/dia, 4 batches de 25
+- [x] Prospecting Roberts filtra contatos sem email antes de criar approval
+- [x] Prospecting Roberts suprime emails enviados nos últimos 60 dias
+- [x] Envio Resend com throttling para evitar rate limit de 5 req/s
+- [x] Webhook Resend criado para registrar delivered/bounce/complaint/delay em audit log
 - [x] Intercalação configurada: 2 `customer_file` para 1 `scrape` quando houver scrape queued
 - [x] Comando Telegram manual criado: `prospect roberts 10`
 - [x] Fluxos nomeados: `roberts 10` usa lista própria; `roberts web` usa fila de scrape/web
@@ -70,7 +81,7 @@
 - [x] Supabase `clients_web_verified` criado para registrar contatos web verificados enviados
 - [x] Roberts web real validado: approval Telegram → envio Resend → registro `clients_web_verified` → resumo 10/10
 - [x] GHL Roberts token válido direto na API: pipeline lookup OK
-- [ ] Prospectar clientes existentes nos pipelines Roberts ou CSV, excluindo `do_not_contact`
+- [x] Prospectar clientes existentes nos pipelines Roberts ou CSV, excluindo `do_not_contact`
 - [x] Autorizar Google Calendar no Composio
 - [ ] Autorizar HighLevel/GHL no Composio
 - [x] Conectar Telegram dev bot real (`@maestro_dev_bot`): webhook público validado via ngrok
@@ -79,7 +90,10 @@
 - [x] Adicionar camada central `trace_agent_run` para traces LangSmith por agent com tags `business`, `agent`, `prompt_version`
 - [x] Adicionar accounting LLM real via `contextvars`: `tokens_in`, `tokens_out`, `cost_usd` em `agent_runs`
 - [x] Cost guard bloqueia grafo, scheduler e comandos diretos Telegram antes de executar agents
-- [ ] Rodar smoke real LangSmith/Anthropic em `maestro-prod` com `DRY_RUN=true`
+- [x] Rodar smoke real LangSmith/Anthropic em `maestro-prod` com `DRY_RUN=true`
+- [x] Supabase real confirmou `agent_runs`: `tokens_in`, `tokens_out`, `cost_usd`, `langsmith_trace_url`, `dry_run=true`
+- [x] Soak real curto em `maestro-prod` dry-run: 2 execuções CFO com `agent_runs`, `business_metrics`, `audit_log`, LangSmith URL e custo persistidos
+- [ ] Soak real longo: 3-7 dias sem surpresa operacional
 - [ ] Adicionar LLM real nos subagents restantes onde fizer diferença, preservando fallback determinístico
 
 ---
@@ -99,7 +113,7 @@
 ### APIs — smoke test (1 dia dedicado, ambos)
 - [ ] **[T]** Anthropic API: chave funciona, Tier 4 confirmado (`curl` com Sonnet 4.6)
 - [ ] **[T]** OpenAI API: chave funciona (fallback)
-- [ ] **[G]** LangSmith: projeto `maestro-prod` criado, primeiro trace de teste enviado com `scripts/smoke_langsmith_trace.py`
+- [x] **[G]** LangSmith: projeto `maestro-prod` criado, primeiro trace de teste enviado com `scripts/smoke_langsmith_trace.py`
 - [ ] **[T]** GHL Roberts: location token + webhook secret. Testar: criar contato fake, receber 1 evento webhook
 - [ ] **[T]** GHL DockPlus AI: idem
 - [ ] **[G]** Resend: domínio/from validado, testar envio real para conta controlada
@@ -471,20 +485,21 @@
   - Se >$15: registra alerta em `audit_log` e log estruturado
   - Se >$30: pausa agents via store + Redis kill switch, mantém webhooks ativos
   - Roda a cada hora via APScheduler
-- [ ] **[G]** Alertas Telegram para cost alert/kill
+- [x] **[G]** Alertas Telegram para cost alert/kill
 - [ ] **[G]** `daily_costs` table atualizada a cada agent run (backlog; fonte da verdade atual é `agent_runs`)
 - [x] **[T]** Verificar: simular custo alto artificialmente, confirmar kill switch funciona em grafo, scheduler e Telegram
 
 ### Observabilidade
 - [x] **[G]** LangSmith: tags em todos os traces (`business=`, `agent=`, `prompt_version=`)
 - [x] **[G]** Agent runs persistem `tokens_in`, `tokens_out`, `cost_usd` quando chamadas Claude usam `call_claude`
-- [ ] **[G]** Smoke real em `maestro-prod`: `scripts/smoke_langsmith_trace.py` com `DRY_RUN=true`
+- [x] **[G]** Smoke real em `maestro-prod`: `scripts/smoke_langsmith_trace.py` com `DRY_RUN=true`
 - [ ] **[G]** `scripts/dashboard.py` — CLI simples: latência P50/P90, taxa erro, custo dia, leads processados
 - [ ] **[G]** Alertas Telegram: todos os eventos críticos do SDD §13.5 implementados
 
 ### Soak test (7 dias)
 - [ ] **[GT]** Dias 1-3: leads reais Roberts entram, Thiago aprova via Telegram, observar comportamento
 - [ ] **[GT]** Dias 4-7: crons rodando, briefing segunda, posts diários propostos
+- [x] **[G]** Soak controlado curto: `scripts/soak_production_dry_run.py --cycles 2 --agents cfo`
 - [ ] **[T]** Self-report: "economizei X horas esta semana?" — baseline vs MAESTRO
 - [ ] **[GT]** Retrospectiva Fase 1: o que funcionou, o que foi ajustado, backlog para Fase 2
 
@@ -510,7 +525,8 @@
 - [x] **[G]** `prospect_queue` com `source_type=customer_file|scrape` para alternar fontes
 - [x] **[G]** Batch scheduler 4x/dia para campanha Roberts com aprovação humana antes de envio
 - [ ] **[GT]** B2B outbound (DockPlus AI): prospecting para DockPlus — não iniciado
-- [ ] **[G]** Prospecting Agent híbrido: CSV/customers + GHL pipeline + online scraping/enrichment, sempre com HITL
+- [x] **[G]** Prospecting Agent híbrido: CSV/customers + online scraping/enrichment, sempre com HITL
+- [ ] **[G]** Prospecting Agent híbrido: adicionar GHL pipeline como fonte direta
 - [ ] **[G]** Prospecting Agent + 7 subagents (icp_definer, list_builder, enricher, personalizer, cadence_orchestrator, reply_classifier, deliverability_monitor)
 - [ ] **[G]** Customer Success Agent + 4 subagents
 - [ ] **[G]** Brand Guardian subagent transversal

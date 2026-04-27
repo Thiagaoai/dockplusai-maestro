@@ -15,6 +15,7 @@ class FakeQuery:
         self._payload = None
         self._on_conflict = None
         self._filters = []
+        self._in_filters = []
         self._limit = None
         self._orders = []
 
@@ -40,6 +41,10 @@ class FakeQuery:
 
     def eq(self, key, value):
         self._filters.append((key, value))
+        return self
+
+    def in_(self, key, values):
+        self._in_filters.append((key, set(values)))
         return self
 
     def limit(self, value):
@@ -78,6 +83,8 @@ class FakeQuery:
         selected = list(rows)
         for key, value in self._filters:
             selected = [row for row in selected if row.get(key) == value]
+        for key, values in self._in_filters:
+            selected = [row for row in selected if row.get(key) in values]
         for key, desc in reversed(self._orders):
             selected = sorted(selected, key=lambda row: row.get(key) or 0, reverse=desc)
         if self._limit is not None:
@@ -238,3 +245,37 @@ async def test_supabase_store_upserts_clients_web_verified(supabase_store):
     rows = supabase_store.client.tables["clients_web_verified"]
     assert len(rows) == 1
     assert rows[0]["email_id"] == "email_2"
+
+
+@pytest.mark.asyncio
+async def test_supabase_store_gets_prospect_queue_items_by_refs_in_input_order(supabase_store):
+    rows = [
+        {
+            "business": "roberts",
+            "source_type": "scrape",
+            "source_ref": "old",
+            "status": "queued",
+        },
+        {
+            "business": "roberts",
+            "source_type": "scrape",
+            "source_ref": "second",
+            "status": "queued",
+        },
+        {
+            "business": "roberts",
+            "source_type": "scrape",
+            "source_ref": "first",
+            "status": "queued",
+        },
+    ]
+    supabase_store.client.tables["prospect_queue"] = rows
+
+    selected = await supabase_store.get_prospect_queue_items_by_refs(
+        business="roberts",
+        source_refs=["first", "second"],
+        source_type="scrape",
+        status="queued",
+    )
+
+    assert [row["source_ref"] for row in selected] == ["first", "second"]

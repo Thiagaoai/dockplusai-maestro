@@ -4,7 +4,6 @@ import json
 import re
 from dataclasses import dataclass
 
-import httpx
 import structlog
 
 from maestro.config import Settings
@@ -82,26 +81,17 @@ async def parse_telegram_intent(text: str, settings: Settings) -> TelegramIntent
         return TelegramIntent(action="unknown")
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 120,
-                    "system": _SYSTEM_PROMPT,
-                    "messages": [{"role": "user", "content": text}],
-                },
-            )
-        if r.status_code >= 400:
-            log.warning("intent_classifier_api_error", status=r.status_code, body=r.text[:200])
-            return TelegramIntent(action="unknown")
+        from maestro.utils.llm import HAIKU, UnknownModelPricingError, call_claude
 
-        raw = r.json().get("content", [{}])[0].get("text", "").strip()
+        raw = await call_claude(
+            _SYSTEM_PROMPT,
+            text,
+            settings=settings,
+            model=HAIKU,
+            max_tokens=120,
+            temperature=0,
+        )
+        raw = raw.strip()
         log.debug("intent_classifier_raw", raw=raw)
         m = _JSON_RE.search(raw)
         if not m:
@@ -146,6 +136,8 @@ async def parse_telegram_intent(text: str, settings: Settings) -> TelegramIntent
         log.info("intent_classified", text=text[:80], action=action, target=intent.target, source=source)
         return intent
 
+    except UnknownModelPricingError:
+        raise
     except Exception as exc:
         log.warning("intent_classifier_exception", error=str(exc), text=text[:80])
         return TelegramIntent(action="unknown")

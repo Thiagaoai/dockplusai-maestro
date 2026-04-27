@@ -4,7 +4,7 @@ intent.py tests use mocked HTTP or no-api-key path.
 prompts.py tests load real templates from maestro/prompts/v1/.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,11 +25,26 @@ async def test_parse_intent_no_api_key_returns_unknown():
 
 # ── intent: mocked API returns prospect_web ───────────────────────────────────
 
-def _mock_api_response(text: str):
-    response = MagicMock()
-    response.status_code = 200
-    response.json = lambda: {"content": [{"text": text}]}
-    return response
+class _FakeMessages:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    async def create(self, **kwargs):
+        return SimpleNamespace(
+            content=[SimpleNamespace(text=self.text)],
+            usage=SimpleNamespace(input_tokens=10, output_tokens=10),
+        )
+
+
+class _FakeClient:
+    def __init__(self, text: str) -> None:
+        self.messages = _FakeMessages(text)
+
+
+def _mock_claude(monkeypatch, text: str) -> None:
+    import maestro.utils.llm as llm
+
+    monkeypatch.setattr(llm, "get_client", lambda settings: _FakeClient(text))
 
 
 @pytest.mark.asyncio
@@ -40,9 +55,8 @@ async def test_parse_intent_classifies_prospect_web(monkeypatch):
 
     api_json = '{"action":"prospect_web","source":"tavily","target":"school"}'
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = _mock_api_response(api_json)
-        result = await parse_telegram_intent("quero prospectar escolas", settings)
+    _mock_claude(monkeypatch, api_json)
+    result = await parse_telegram_intent("quero prospectar escolas", settings)
 
     assert result.action == "prospect_web"
     assert result.source == "tavily"
@@ -57,9 +71,8 @@ async def test_parse_intent_classifies_prospect_batch(monkeypatch):
 
     api_json = '{"action":"prospect_batch","mode":"owned","batch_size":10}'
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = _mock_api_response(api_json)
-        result = await parse_telegram_intent("roda um batch de 10", settings)
+    _mock_claude(monkeypatch, api_json)
+    result = await parse_telegram_intent("roda um batch de 10", settings)
 
     assert result.action == "prospect_batch"
     assert result.mode == "owned"
@@ -72,13 +85,13 @@ async def test_parse_intent_api_error_returns_unknown(monkeypatch):
     get_settings.cache_clear()
     settings = get_settings()
 
-    error_response = MagicMock()
-    error_response.status_code = 429
-    error_response.text = "rate limit exceeded"
+    import maestro.utils.llm as llm
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = error_response
-        result = await parse_telegram_intent("some text", settings)
+    async def _raise(*args, **kwargs):
+        raise RuntimeError("rate limit exceeded")
+
+    monkeypatch.setattr(llm, "call_claude", _raise)
+    result = await parse_telegram_intent("some text", settings)
 
     assert result.action == "unknown"
 
@@ -89,9 +102,8 @@ async def test_parse_intent_no_json_in_response_returns_unknown(monkeypatch):
     get_settings.cache_clear()
     settings = get_settings()
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = _mock_api_response("I cannot classify this.")
-        result = await parse_telegram_intent("gibberish", settings)
+    _mock_claude(monkeypatch, "I cannot classify this.")
+    result = await parse_telegram_intent("gibberish", settings)
 
     assert result.action == "unknown"
 
@@ -104,9 +116,8 @@ async def test_parse_intent_invalid_action_defaults_to_unknown(monkeypatch):
 
     api_json = '{"action":"invalid_action","source":"tavily","target":""}'
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = _mock_api_response(api_json)
-        result = await parse_telegram_intent("something weird", settings)
+    _mock_claude(monkeypatch, api_json)
+    result = await parse_telegram_intent("something weird", settings)
 
     assert result.action == "unknown"
 
@@ -119,9 +130,8 @@ async def test_parse_intent_invalid_source_defaults_to_tavily(monkeypatch):
 
     api_json = '{"action":"prospect_web","source":"not_a_real_source","target":"marina"}'
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = _mock_api_response(api_json)
-        result = await parse_telegram_intent("marinas", settings)
+    _mock_claude(monkeypatch, api_json)
+    result = await parse_telegram_intent("marinas", settings)
 
     assert result.source == "tavily"
 

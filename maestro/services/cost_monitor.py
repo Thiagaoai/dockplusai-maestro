@@ -46,20 +46,24 @@ async def evaluate_cost_guard(settings: Settings, store: Any, *, source: str) ->
     if snapshot.status == "killed":
         store.paused = True
         set_stopped()
-        await _audit_once(
+        should_notify = await _audit_once(
             store,
             event_id=_event_id("kill", snapshot.reason),
             action="cost_kill_switch_triggered",
             payload={**snapshot.model_dump(), "source": source},
         )
+        if should_notify:
+            await _notify_cost_guard(settings, snapshot, source=source)
         log.warning("cost_kill_switch_triggered", **snapshot.model_dump(), source=source)
     elif snapshot.status == "alert":
-        await _audit_once(
+        should_notify = await _audit_once(
             store,
             event_id=_event_id("alert", datetime.now(UTC).strftime("%Y-%m-%d")),
             action="cost_alert_threshold_crossed",
             payload={**snapshot.model_dump(), "source": source},
         )
+        if should_notify:
+            await _notify_cost_guard(settings, snapshot, source=source)
         log.warning("cost_alert_threshold_crossed", **snapshot.model_dump(), source=source)
     else:
         log.info("cost_guard_ok", **snapshot.model_dump(), source=source)
@@ -162,16 +166,42 @@ def _snapshot(settings: Settings, daily_cost: float, monthly_cost: float) -> Cos
     )
 
 
-async def _audit_once(store: Any, *, event_id: str, action: str, payload: dict[str, Any]) -> None:
+async def _audit_once(store: Any, *, event_id: str, action: str, payload: dict[str, Any]) -> bool:
     if await store.is_processed(event_id):
-        return
+        return False
     await store.add_audit_log(
         event_type="cost_guard",
         action=action,
         payload=payload,
     )
     await store.mark_processed(event_id, "cost_monitor", payload)
+    return True
 
 
 def _event_id(kind: str, suffix: str | None) -> str:
     return f"cost_monitor:{kind}:{suffix or 'unknown'}"
+
+
+async def _notify_cost_guard(settings: Settings, snapshot: CostSnapshot, *, source: str) -> None:
+    try:
+        from maestro.services.telegram import TelegramService
+
+        if snapshot.status == "killed":
+            text = (
+                "MAESTRO cost kill switch ativado.\n\n"
+                f"Motivo: {snapshot.reason}\n"
+                f"Custo hoje: ${snapshot.daily_cost_usd:.2f} / ${snapshot.daily_kill_usd:.2f}\n"
+                f"Custo mes: ${snapshot.monthly_cost_usd:.2f} / ${snapshot.monthly_kill_usd:.2f}\n"
+                f"Fonte: {source}\n\n"
+                "Agents pausados. Webhooks continuam ativos."
+            )
+        else:
+            text = (
+                "MAESTRO cost alert.\n\n"
+                f"Custo hoje: ${snapshot.daily_cost_usd:.2f} / ${snapshot.daily_alert_usd:.2f}\n"
+                f"Custo mes: ${snapshot.monthly_cost_usd:.2f}\n"
+                f"Fonte: {source}"
+            )
+        await TelegramService(settings).send_message(text)
+    except Exception as exc:
+        log.warning("cost_guard_telegram_notify_failed", error=str(exc), source=source)

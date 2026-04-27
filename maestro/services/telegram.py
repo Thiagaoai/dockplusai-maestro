@@ -4,6 +4,7 @@ import httpx
 import structlog
 
 from maestro.config import Settings
+from maestro.telegram.schemas import TelegramReply
 
 log = structlog.get_logger()
 
@@ -46,6 +47,17 @@ class TelegramService:
         payload = {"chat_id": self.settings.telegram_thiago_chat_id, "text": text}
         if self.settings.app_env == "test" or not self.settings.telegram_bot_token:
             log.info("telegram_message_dry_run", text=text[:80])
+            return {"dry_run": True, "payload": payload}
+        url = f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/sendMessage"
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            return response.json()
+
+    async def send_reply(self, reply: TelegramReply) -> dict[str, Any]:
+        payload = reply.payload(self.settings.telegram_thiago_chat_id)
+        if self.settings.app_env == "test" or not self.settings.telegram_bot_token:
+            log.info("telegram_reply_dry_run", text=reply.text[:80])
             return {"dry_run": True, "payload": payload}
         url = f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/sendMessage"
         async with httpx.AsyncClient(timeout=30) as client:

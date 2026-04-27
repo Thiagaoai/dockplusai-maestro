@@ -1,4 +1,9 @@
 ingress:
+  - hostname: maestro-hooks.robertslandscapecod.com
+    service: http://app:8000
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
   - hostname: maestro.thiagodocarmo.com
     service: http://app:8000
     originRequest:
