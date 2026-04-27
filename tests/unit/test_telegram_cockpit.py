@@ -14,6 +14,10 @@ async def test_parser_routes_admin_status_and_workflows_without_llm():
     assert status.intent_type == IntentType.status
     assert status.action == "system_status"
 
+    calls = await parse_command("/calls", settings)
+    assert calls.intent_type == IntentType.status
+    assert calls.action == "call_targets"
+
     pause = await parse_command("pausa marketing", settings)
     assert pause.intent_type == IntentType.admin
     assert pause.action == "pause_agent"

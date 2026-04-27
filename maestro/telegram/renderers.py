@@ -17,6 +17,7 @@ def help_reply() -> TelegramReply:
             "/agents - agents e pausas\n"
             "/costs - custo hoje/mes\n"
             "/pending - aprovacoes\n"
+            "/calls - lista de ligacao\n"
             "/errors - erros recentes\n\n"
             "Exemplos: CFO Roberts agora | faz post Roberts sobre spring cleanup | "
             "prospect web hoa | pausa marketing"
@@ -101,3 +102,15 @@ def errors_reply(errors: list[dict[str, Any]]) -> TelegramReply:
         lines.append(f"- {err.get('agent') or 'system'}: {err.get('action')} ({err.get('created_at')})")
     return TelegramReply(text="\n".join(lines))
 
+
+def call_targets_reply(targets: list[dict[str, Any]]) -> TelegramReply:
+    if not targets:
+        return TelegramReply(text="Sem contatos entregues para ligar agora.")
+    ready = [item for item in targets if item.get("priority") in {"high", "call"}]
+    lines = [f"Ligações Roberts: {len(ready)} prontos"]
+    for item in targets[:10]:
+        phone = item.get("phone") or "sem telefone"
+        status = item.get("status") or "unknown"
+        name = item.get("name") or "Unknown"
+        lines.append(f"- {name}: {phone} | {status}")
+    return TelegramReply(text="\n".join(lines))

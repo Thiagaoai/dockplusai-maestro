@@ -15,6 +15,7 @@ from maestro.telegram.renderers import (
     clarification_reply,
     costs_reply,
     errors_reply,
+    call_targets_reply,
     help_reply,
     pending_reply,
     simple_reply,
@@ -66,6 +67,9 @@ class TelegramCommandRouter:
         if intent.action == "recent_errors":
             errors = await controller.recent_errors()
             return {"status": "ok", "errors": errors}, errors_reply(errors)
+        if intent.action == "call_targets":
+            targets = await controller.call_targets(intent.business or "roberts", days=1, limit=10)
+            return {"status": "ok", "call_targets": targets}, call_targets_reply(targets)
         data = await controller.system_status()
         return {"status": "ok", "system": data}, status_reply(data)
 
@@ -97,4 +101,3 @@ class TelegramCommandRouter:
         if status == "error":
             return simple_reply(f"Falha no fluxo {result.get('agent')}: {result.get('error', 'erro desconhecido')}")
         return simple_reply(str(result.get("message") or result.get("status") or "OK"))
-

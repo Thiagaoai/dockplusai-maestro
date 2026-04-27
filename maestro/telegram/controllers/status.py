@@ -7,6 +7,7 @@ from maestro.config import Settings
 from maestro.memory.redis_session import is_stopped
 from maestro.repositories.store import InMemoryStore
 from maestro.services.cost_monitor import evaluate_cost_guard
+from maestro.services.call_targets import load_call_targets
 from maestro.telegram.control_state import paused_items
 from maestro.telegram.registry import AGENT_REGISTRY
 
@@ -67,6 +68,23 @@ class StatusController:
             return getattr(response, "data", None) or []
         return []
 
+    async def call_targets(self, business: str = "roberts", days: int = 1, limit: int = 10) -> list[dict[str, Any]]:
+        targets = await load_call_targets(self.store, business=business, days=days, limit=limit)
+        return [
+            {
+                "name": target.name,
+                "email": target.email,
+                "phone": target.phone,
+                "status": target.status,
+                "priority": target.priority,
+                "source_ref": target.source_ref,
+                "email_id": target.email_id,
+                "last_event_at": target.last_event_at.isoformat() if target.last_event_at else None,
+                "events": list(target.events),
+            }
+            for target in targets
+        ]
+
     async def _pending_count(self) -> int:
         if hasattr(self.store, "approvals"):
             return sum(1 for approval in self.store.approvals.values() if approval.status == "pending")
@@ -82,4 +100,3 @@ class StatusController:
 
     async def _recent_errors_count(self) -> int:
         return len(await self.recent_errors())
-

@@ -56,6 +56,9 @@ def _parse_slash(raw: str, lowered: str) -> CommandIntent | None:
         "/pending": (IntentType.approval, "list_pending"),
         "/approvals": (IntentType.approval, "list_pending"),
         "/errors": (IntentType.status, "recent_errors"),
+        "/calls": (IntentType.status, "call_targets"),
+        "/ligacoes": (IntentType.status, "call_targets"),
+        "/ligações": (IntentType.status, "call_targets"),
         "/stop": (IntentType.admin, "pause_all"),
         "/start": (IntentType.admin, "resume_all"),
     }
@@ -102,6 +105,8 @@ def _parse_status(raw: str, lowered: str) -> CommandIntent | None:
         return CommandIntent(intent_type=IntentType.status, action="cost_status", raw_text=raw)
     if "erro" in lowered or "error" in lowered or "falhou" in lowered:
         return CommandIntent(intent_type=IntentType.status, action="recent_errors", raw_text=raw)
+    if any(word in lowered for word in ("ligacao", "ligação", "ligar", "calls", "call list")):
+        return CommandIntent(intent_type=IntentType.status, action="call_targets", business="roberts", raw_text=raw)
     if "agents" in lowered or "agentes" in lowered:
         return CommandIntent(intent_type=IntentType.status, action="agent_status", raw_text=raw)
     if lowered.startswith("status "):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
@@ -99,6 +99,48 @@ def source_refs_from_send_rows(send_rows: list[dict[str, Any]]) -> list[str]:
     return refs
 
 
+async def load_call_targets(
+    store: Any,
+    business: str = "roberts",
+    days: int = 7,
+    limit: int = 50,
+) -> list[CallTarget]:
+    if hasattr(store, "client"):
+        send_rows = _fetch_supabase_audit_rows(
+            store,
+            business=business,
+            action="prospecting_batch_send_html",
+            days=days,
+            limit=max(limit * 4, 100),
+        )
+        event_rows = _fetch_supabase_audit_rows(
+            store,
+            business=business,
+            action="resend_email_event",
+            days=days,
+            limit=max(limit * 20, 500),
+        )
+        leads_by_source_ref = _fetch_supabase_leads_by_source_ref(
+            store,
+            business,
+            source_refs_from_send_rows(send_rows),
+        )
+        return build_call_targets(send_rows, event_rows, leads_by_source_ref, limit=limit)
+
+    send_rows = [
+        record.model_dump(mode="json")
+        for record in getattr(store, "audit_log", [])
+        if record.business == business and record.agent == "prospecting" and record.action == "prospecting_batch_send_html"
+    ]
+    event_rows = [
+        record.model_dump(mode="json")
+        for record in getattr(store, "audit_log", [])
+        if record.business == business and record.agent == "prospecting" and record.action == "resend_email_event"
+    ]
+    leads_by_source_ref = _memory_leads_by_source_ref(store, business, source_refs_from_send_rows(send_rows))
+    return build_call_targets(send_rows, event_rows, leads_by_source_ref, limit=limit)
+
+
 def _events_by_email_id(event_rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in event_rows:
@@ -117,6 +159,78 @@ def _events_by_email_id(event_rows: list[dict[str, Any]]) -> dict[str, list[dict
     for items in grouped.values():
         items.sort(key=lambda item: item.get("created_at") or datetime.min.replace(tzinfo=UTC))
     return grouped
+
+
+def _fetch_supabase_audit_rows(
+    store: Any,
+    business: str,
+    action: str,
+    days: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    response = (
+        store.client.table("audit_log")
+        .select("payload,created_at")
+        .eq("business", business)
+        .eq("agent", "prospecting")
+        .eq("action", action)
+        .gte("created_at", cutoff.isoformat())
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return getattr(response, "data", None) or []
+
+
+def _fetch_supabase_leads_by_source_ref(
+    store: Any,
+    business: str,
+    source_refs: list[str],
+) -> dict[str, dict[str, Any]]:
+    if not source_refs:
+        return {}
+    queue_rows: list[dict[str, Any]] = []
+    for chunk in _chunks(source_refs, 100):
+        response = (
+            store.client.table("prospect_queue")
+            .select("source_ref,lead_id")
+            .eq("business", business)
+            .in_("source_ref", chunk)
+            .execute()
+        )
+        queue_rows.extend(getattr(response, "data", None) or [])
+
+    lead_ids = [row["lead_id"] for row in queue_rows if row.get("lead_id")]
+    leads_by_id: dict[str, dict[str, Any]] = {}
+    for chunk in _chunks(lead_ids, 100):
+        response = (
+            store.client.table("leads")
+            .select("id,name,email,phone")
+            .in_("id", chunk)
+            .execute()
+        )
+        for row in getattr(response, "data", None) or []:
+            leads_by_id[str(row.get("id"))] = row
+
+    return {
+        row["source_ref"]: leads_by_id.get(str(row.get("lead_id")), {})
+        for row in queue_rows
+        if row.get("source_ref")
+    }
+
+
+def _memory_leads_by_source_ref(store: Any, business: str, source_refs: list[str]) -> dict[str, dict[str, Any]]:
+    refs = set(source_refs)
+    leads_by_ref: dict[str, dict[str, Any]] = {}
+    for item in getattr(store, "prospect_queue", []):
+        source_ref = item.get("source_ref")
+        if item.get("business") != business or source_ref not in refs:
+            continue
+        lead = getattr(store, "leads", {}).get(str(item.get("lead_id")))
+        if lead:
+            leads_by_ref[source_ref] = lead.model_dump(mode="json")
+    return leads_by_ref
 
 
 def _status_for_events(events: tuple[str, ...]) -> str:
@@ -166,3 +280,7 @@ def _parse_datetime(value: Any) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _chunks(values: list[str], size: int) -> list[list[str]]:
+    return [values[idx : idx + size] for idx in range(0, len(values), size)]
