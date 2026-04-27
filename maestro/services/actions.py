@@ -11,6 +11,7 @@ from maestro.services.highlevel import HighLevelClient, HighLevelError
 from maestro.services.postforme import PostformeClient, PostformeError
 from maestro.services.resend import ResendEmailClient, ResendError
 from maestro.utils.contact_policy import find_do_not_contact_match
+from maestro.utils.email_validation import is_valid_email_address
 
 
 class DryRunActionExecutor:
@@ -140,6 +141,9 @@ class DryRunActionExecutor:
                 continue
             if not lead.email:
                 skipped.append({"source_ref": source_ref, "reason": "missing_email"})
+                continue
+            if not is_valid_email_address(lead.email):
+                skipped.append({"source_ref": source_ref, "email": lead.email, "reason": "invalid_email"})
                 continue
 
             try:

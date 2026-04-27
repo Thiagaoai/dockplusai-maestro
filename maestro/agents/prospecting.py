@@ -9,6 +9,7 @@ from maestro.schemas.events import AgentRunRecord, ApprovalRequest, LeadRecord
 from maestro.services.prospecting import interleave_prospect_sources, prospect_queue_item
 from maestro.services.tavily import TavilyProspectFinder, WebProspect
 from maestro.tools._enrichment.apollo import search_people
+from maestro.utils.email_validation import is_valid_email_address
 
 KNOWN_SOURCES = {"tavily", "google", "hunter", "apollo", "apify", "perplexity"}
 
@@ -353,7 +354,7 @@ class ProspectingAgent:
                 continue
             lead = await self.store.get_lead(item.get("lead_id")) if item.get("lead_id") else None
             email = (getattr(lead, "email", None) or "").casefold()
-            if not email or email in recent_sent or email in seen_emails:
+            if not is_valid_email_address(email) or email in recent_sent or email in seen_emails:
                 continue
             seen_emails.add(email)
             selected.append(item)
